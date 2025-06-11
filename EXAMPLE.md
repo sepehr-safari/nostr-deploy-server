@@ -42,9 +42,9 @@ Before using this server, you need:
   "kind": 10002,
   "content": "",
   "tags": [
-    ["r", "wss://relay.damus.io", "read"],
-    ["r", "wss://nos.lol"],
-    ["r", "wss://relay.nostr.band", "read"]
+    ["r", "wss://nos.lol", "read"],
+    ["r", "wss://ditto.pub/relay"],
+    ["r", "wss://relay.damus.io", "read"]
   ],
   "sig": "signature..."
 }
@@ -60,7 +60,7 @@ Before using this server, you need:
   "kind": 10063,
   "content": "",
   "tags": [
-    ["server", "https://blossom.primal.net"],
+    ["server", "https://cdn.hzrd149.com"],
     ["server", "https://my-custom-blossom.com"]
   ],
   "sig": "signature..."
@@ -80,10 +80,10 @@ NODE_ENV=production
 BASE_DOMAIN=npubsites.com
 
 # Default relays (used when user has no relay list)
-DEFAULT_RELAYS=wss://relay.damus.io,wss://nos.lol,wss://relay.nostr.band
+DEFAULT_RELAYS=wss://nos.lol,wss://ditto.pub/relay,wss://relay.damus.io
 
 # Default Blossom servers (used when user has no server list)
-DEFAULT_BLOSSOM_SERVERS=https://blossom.primal.net,https://blossom.hzrd149.com
+DEFAULT_BLOSSOM_SERVERS=https://cdn.hzrd149.com,https://nostr.download
 
 # Performance settings
 CACHE_TTL_SECONDS=300
@@ -147,7 +147,7 @@ npub1yf5pr8xfy58058jxde48x4an905wnfzq28m54mex0pvsdcrxqsrq8ppkzc
 
 ```
 Query: kind 10002, authors: [pubkey]
-Result: ["wss://relay.damus.io", "wss://nos.lol"]
+Result: ["wss://nos.lol", "wss://ditto.pub/relay"]
 ```
 
 ### 5. Server fetches file mapping
@@ -161,13 +161,13 @@ Result: x tag = "186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c9
 
 ```
 Query: kind 10063, authors: [pubkey]
-Result: ["https://blossom.primal.net"]
+Result: ["https://cdn.hzrd149.com"]
 ```
 
 ### 7. Server fetches file from Blossom
 
 ```
-GET https://blossom.primal.net/186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99
+GET https://cdn.hzrd149.com/186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99
 ```
 
 ### 8. Server serves file

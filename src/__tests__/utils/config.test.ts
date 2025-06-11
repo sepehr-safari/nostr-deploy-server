@@ -41,14 +41,13 @@ describe('ConfigManager', () => {
       expect(config.port).toBe(3001); // From test setup
       expect(config.baseDomain).toBe('test.example.com'); // From test setup
       expect(config.defaultRelays).toEqual([
-        'wss://relay.damus.io',
         'wss://nos.lol',
-        'wss://relay.nostr.band',
-        'wss://relay.snort.social',
+        'wss://ditto.pub/relay',
+        'wss://relay.damus.io',
       ]);
       expect(config.defaultBlossomServers).toEqual([
-        'https://blossom.primal.net',
-        'https://blossom.hzrd149.com',
+        'https://cdn.hzrd149.com',
+        'https://nostr.download',
       ]);
       expect(config.cacheTtlSeconds).toBe(60); // From test setup
       expect(config.maxCacheSize).toBe(10); // From test setup
@@ -88,7 +87,7 @@ describe('ConfigManager', () => {
     it('should throw error for missing base domain', () => {
       // Create a new instance to isolate validation
       (ConfigManager as any).instance = undefined;
-      process.env.BASE_DOMAIN = ''; // Empty domain
+      delete process.env.BASE_DOMAIN; // Remove domain entirely
 
       expect(() => {
         ConfigManager.getInstance();

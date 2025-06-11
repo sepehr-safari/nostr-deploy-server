@@ -1,5 +1,6 @@
 import { nip19 } from 'nostr-tools';
 import { NostrHelper } from '../../helpers/nostr';
+import { blossomServerCache, pathMappingCache, relayListCache } from '../../utils/cache';
 
 // Mock the nostr-tools module
 jest.mock('nostr-tools', () => ({
@@ -19,6 +20,11 @@ describe('NostrHelper', () => {
   const mockDecode = nip19.decode as jest.MockedFunction<typeof nip19.decode>;
 
   beforeEach(() => {
+    // Clear all caches before each test
+    relayListCache.clear();
+    blossomServerCache.clear();
+    pathMappingCache.clear();
+
     nostrHelper = new NostrHelper();
     jest.clearAllMocks();
   });
@@ -74,12 +80,7 @@ describe('NostrHelper', () => {
       const pubkey = '266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5';
       const relays = await nostrHelper.getRelayList(pubkey);
 
-      expect(relays).toEqual([
-        'wss://relay.damus.io',
-        'wss://nos.lol',
-        'wss://relay.nostr.band',
-        'wss://relay.snort.social',
-      ]);
+      expect(relays).toEqual(['wss://nos.lol', 'wss://ditto.pub/relay', 'wss://relay.damus.io']);
     });
 
     it('should parse relay list from event', async () => {
@@ -120,7 +121,7 @@ describe('NostrHelper', () => {
       const pubkey = '266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5';
       const servers = await nostrHelper.getBlossomServers(pubkey);
 
-      expect(servers).toEqual(['https://blossom.primal.net', 'https://blossom.hzrd149.com']);
+      expect(servers).toEqual(['https://cdn.hzrd149.com', 'https://nostr.download']);
     });
 
     it('should parse server list from event', async () => {

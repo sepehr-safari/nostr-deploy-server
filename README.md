@@ -87,10 +87,10 @@ NODE_ENV=production
 BASE_DOMAIN=example.com
 
 # Default Nostr Relays (comma-separated)
-DEFAULT_RELAYS=wss://relay.damus.io,wss://nos.lol,wss://relay.nostr.band,wss://relay.snort.social
+DEFAULT_RELAYS=wss://nos.lol,wss://ditto.pub/relay,wss://relay.damus.io
 
 # Default Blossom Servers (comma-separated)
-DEFAULT_BLOSSOM_SERVERS=https://blossom.primal.net,https://blossom.hzrd149.com
+DEFAULT_BLOSSOM_SERVERS=https://cdn.hzrd149.com,https://nostr.download
 
 # Caching Configuration
 CACHE_TTL_SECONDS=300
