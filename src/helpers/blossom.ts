@@ -131,6 +131,9 @@ export class BlossomHelper {
         }
       }
 
+      // Fix incorrect MIME types from Blossom servers
+      contentType = this.fixMimeType(contentType, path || '', content);
+
       return {
         content,
         contentType,
@@ -155,6 +158,172 @@ export class BlossomHelper {
         }
       }
       throw error;
+    }
+  }
+
+  /**
+   * Fix incorrect MIME types from Blossom servers
+   * This function corrects common MIME type mismatches for major file types
+   */
+  private fixMimeType(serverContentType: string, path: string, content: Uint8Array): string {
+    if (!path) return serverContentType;
+
+    const ext = path.toLowerCase().split('.').pop();
+    if (!ext) return serverContentType;
+
+    // Get the expected MIME type based on file extension
+    const expectedMimeType = this.getContentTypeFromPath(path);
+
+    // List of correct MIME types for major file types that we want to enforce
+    const criticalMimeTypes: Record<string, string[]> = {
+      'text/html': ['html', 'htm'],
+      'text/css': ['css'],
+      'application/javascript': ['js'],
+      'text/javascript': ['js'], // Alternative for JavaScript
+      'application/json': ['json'],
+      'text/xml': ['xml'],
+      'application/xml': ['xml'],
+      'image/png': ['png'],
+      'image/jpeg': ['jpg', 'jpeg'],
+      'image/gif': ['gif'],
+      'image/svg+xml': ['svg'],
+      'image/x-icon': ['ico'],
+      'font/woff': ['woff'],
+      'font/woff2': ['woff2'],
+      'font/ttf': ['ttf'],
+      'application/vnd.ms-fontobject': ['eot'],
+    };
+
+    // Check if this is a critical file type that we want to fix
+    const isCriticalFile = Object.values(criticalMimeTypes).some((extensions) =>
+      extensions.includes(ext)
+    );
+
+    if (!isCriticalFile) {
+      return serverContentType; // Don't modify MIME types for non-critical files
+    }
+
+    // List of commonly incorrect MIME types that servers might return
+    const incorrectMimeTypes = [
+      'application/json',
+      'text/plain',
+      'application/octet-stream',
+      'binary/octet-stream',
+      'text/html', // Sometimes HTML is returned for non-HTML files
+    ];
+
+    // If server returned an incorrect MIME type for a critical file, fix it
+    if (
+      incorrectMimeTypes.includes(serverContentType) ||
+      !this.isMimeTypeCorrectForExtension(serverContentType, ext)
+    ) {
+      // Perform additional content-based validation for key file types
+      if (this.validateContentMatchesExtension(content, ext)) {
+        logger.warn(
+          `Correcting incorrect MIME type for ${path}: ${serverContentType} -> ${expectedMimeType}`
+        );
+        return expectedMimeType;
+      }
+    }
+
+    return serverContentType;
+  }
+
+  /**
+   * Check if the MIME type is correct for the given file extension
+   */
+  private isMimeTypeCorrectForExtension(mimeType: string, extension: string): boolean {
+    const mimeTypeMap: Record<string, string[]> = {
+      html: ['text/html'],
+      htm: ['text/html'],
+      css: ['text/css'],
+      js: ['application/javascript', 'text/javascript'],
+      json: ['application/json'],
+      xml: ['text/xml', 'application/xml'],
+      png: ['image/png'],
+      jpg: ['image/jpeg'],
+      jpeg: ['image/jpeg'],
+      gif: ['image/gif'],
+      svg: ['image/svg+xml'],
+      ico: ['image/x-icon', 'image/vnd.microsoft.icon'],
+      woff: ['font/woff', 'application/font-woff'],
+      woff2: ['font/woff2', 'application/font-woff2'],
+      ttf: ['font/ttf', 'application/font-ttf'],
+      eot: ['application/vnd.ms-fontobject'],
+    };
+
+    const validMimeTypes = mimeTypeMap[extension.toLowerCase()];
+    return validMimeTypes ? validMimeTypes.includes(mimeType.toLowerCase()) : true;
+  }
+
+  /**
+   * Validate that file content matches the expected file type based on extension
+   * This provides an additional layer of validation by checking file signatures/content
+   */
+  private validateContentMatchesExtension(content: Uint8Array, extension: string): boolean {
+    if (content.length === 0) return false;
+
+    const ext = extension.toLowerCase();
+    const contentStart = content.slice(0, Math.min(1024, content.length));
+    const textContent = new TextDecoder('utf-8', { fatal: false }).decode(contentStart);
+
+    switch (ext) {
+      case 'html':
+      case 'htm':
+        // Check for HTML doctype, html tags, or common HTML patterns
+        return /<!doctype\s+html|<html|<head|<body|<div|<span|<p\s|<h[1-6]/i.test(textContent);
+
+      case 'css':
+        // Check for CSS patterns: selectors, properties, at-rules
+        return /[@.]?[a-zA-Z-]+\s*\{|@(import|media|keyframes|charset)|\/\*[\s\S]*?\*\/|[a-zA-Z-]+\s*:\s*[^;]+;/i.test(
+          textContent
+        );
+
+      case 'js':
+        // Check for JavaScript patterns: functions, variables, common keywords
+        return /(function|var|let|const|class|import|export|require|module\.exports|console\.|document\.|window\.|=>|\{|\})/i.test(
+          textContent
+        );
+
+      case 'json':
+        try {
+          JSON.parse(textContent);
+          return true;
+        } catch {
+          // Check for JSON-like structure
+          return /^\s*[\{\[]/.test(textContent) && /[\}\]]\s*$/.test(textContent);
+        }
+
+      case 'xml':
+        return /^\s*<\?xml|<[a-zA-Z][^>]*>/i.test(textContent);
+
+      case 'svg':
+        return /<svg/i.test(textContent);
+
+      case 'png':
+        // PNG file signature
+        return (
+          content[0] === 0x89 && content[1] === 0x50 && content[2] === 0x4e && content[3] === 0x47
+        );
+
+      case 'jpg':
+      case 'jpeg':
+        // JPEG file signature
+        return content[0] === 0xff && content[1] === 0xd8 && content[2] === 0xff;
+
+      case 'gif':
+        // GIF file signature
+        return (
+          content[0] === 0x47 &&
+          content[1] === 0x49 &&
+          content[2] === 0x46 &&
+          content[3] === 0x38 &&
+          (content[4] === 0x37 || content[4] === 0x39)
+        );
+
+      default:
+        // For extensions we don't have specific validation, assume content is valid
+        return true;
     }
   }
 
