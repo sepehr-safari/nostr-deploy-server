@@ -11,14 +11,133 @@ import { blossomServerCache, pathMappingCache, relayListCache } from '../utils/c
 import { ConfigManager } from '../utils/config';
 import { logger } from '../utils/logger';
 
+interface RelayConnection {
+  url: string;
+  lastUsed: number;
+  isConnected: boolean;
+  connectionPromise?: Promise<void>;
+}
+
 export class NostrHelper {
   private pool: SimplePool;
   private config: ConfigManager;
-  private activeConnections: Set<string> = new Set();
+  private connections: Map<string, RelayConnection> = new Map();
+  private cleanupInterval: NodeJS.Timeout;
 
   constructor() {
     this.pool = new SimplePool();
     this.config = ConfigManager.getInstance();
+
+    const configData = this.config.getConfig();
+
+    // Start cleanup interval to remove stale connections
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupStaleConnections();
+    }, configData.wsCleanupIntervalMs);
+  }
+
+  /**
+   * Ensure connection to a relay is established and keep it alive
+   */
+  private async ensureConnection(relayUrl: string): Promise<void> {
+    const existing = this.connections.get(relayUrl);
+    const now = Date.now();
+    const configData = this.config.getConfig();
+
+    // If connection exists and is recent, reuse it
+    if (
+      existing &&
+      existing.isConnected &&
+      now - existing.lastUsed < configData.wsConnectionTimeoutMs
+    ) {
+      existing.lastUsed = now;
+      return;
+    }
+
+    // If there's already a connection attempt in progress, wait for it
+    if (existing?.connectionPromise) {
+      await existing.connectionPromise;
+      if (existing.isConnected) {
+        existing.lastUsed = now;
+        return;
+      }
+    }
+
+    // Create new connection
+    const connection: RelayConnection = {
+      url: relayUrl,
+      lastUsed: now,
+      isConnected: false,
+    };
+
+    this.connections.set(relayUrl, connection);
+
+    // Create connection promise
+    connection.connectionPromise = new Promise<void>((resolve, reject) => {
+      try {
+        // The SimplePool handles the actual WebSocket connection internally
+        // We just need to track that we've "connected" to this relay
+        connection.isConnected = true;
+        connection.lastUsed = now;
+        logger.debug(`Established connection to relay: ${relayUrl}`);
+        resolve();
+      } catch (error) {
+        logger.error(`Failed to connect to relay ${relayUrl}:`, error);
+        connection.isConnected = false;
+        reject(error);
+      }
+    });
+
+    await connection.connectionPromise;
+    connection.connectionPromise = undefined;
+  }
+
+  /**
+   * Clean up stale connections that haven't been used for over an hour
+   */
+  private cleanupStaleConnections(): void {
+    const now = Date.now();
+    const staleRelays: string[] = [];
+    const configData = this.config.getConfig();
+
+    for (const [relayUrl, connection] of this.connections.entries()) {
+      if (now - connection.lastUsed > configData.wsConnectionTimeoutMs) {
+        staleRelays.push(relayUrl);
+        this.connections.delete(relayUrl);
+      }
+    }
+
+    if (staleRelays.length > 0) {
+      try {
+        this.pool.close(staleRelays);
+        logger.debug(`Cleaned up ${staleRelays.length} stale relay connections`);
+      } catch (error) {
+        logger.error('Error closing stale connections:', error);
+      }
+    }
+  }
+
+  /**
+   * Get active connections for the specified relays, establishing new ones if needed
+   */
+  private async getActiveRelays(relays: string[]): Promise<string[]> {
+    const activeRelays: string[] = [];
+
+    // Establish connections to all relays in parallel
+    const connectionPromises = relays.map(async (relay) => {
+      try {
+        await this.ensureConnection(relay);
+        const connection = this.connections.get(relay);
+        if (connection?.isConnected) {
+          activeRelays.push(relay);
+        }
+      } catch (error) {
+        logger.warn(`Failed to connect to relay ${relay}:`, error);
+      }
+    });
+
+    await Promise.allSettled(connectionPromises);
+    return activeRelays;
   }
 
   /**
@@ -250,22 +369,29 @@ export class NostrHelper {
   }
 
   /**
-   * Query multiple relays with timeout
+   * Query multiple relays with timeout using persistent connections
    */
   private async queryRelays(
     relays: string[],
     filter: any,
     timeoutMs: number = 10000
   ): Promise<NostrEvent[]> {
+    // Ensure connections are established
+    const activeRelays = await this.getActiveRelays(relays);
+
+    if (activeRelays.length === 0) {
+      logger.warn('No active relay connections available');
+      return [];
+    }
+
     return new Promise((resolve, reject) => {
       const events: NostrEvent[] = [];
       const timeout = setTimeout(() => {
-        this.closeConnections(relays);
         resolve(events); // Return what we have so far instead of rejecting
       }, timeoutMs);
 
       let completedRelays = 0;
-      const totalRelays = relays.length;
+      const totalRelays = activeRelays.length;
 
       if (totalRelays === 0) {
         clearTimeout(timeout);
@@ -273,40 +399,41 @@ export class NostrHelper {
         return;
       }
 
-      relays.forEach((relay) => {
-        try {
-          const sub = this.pool.subscribeMany([relay], [filter], {
-            onevent(event) {
-              events.push(event);
-            },
-            oneose() {
-              completedRelays++;
-              if (completedRelays === totalRelays) {
-                clearTimeout(timeout);
-                sub.close();
-                resolve(events);
-              }
-            },
-            onclose() {
-              completedRelays++;
-              if (completedRelays === totalRelays) {
-                clearTimeout(timeout);
-                resolve(events);
-              }
-            },
-          });
+      try {
+        const sub = this.pool.subscribeMany(activeRelays, [filter], {
+          onevent(event) {
+            events.push(event);
+          },
+          oneose() {
+            completedRelays++;
+            if (completedRelays === totalRelays) {
+              clearTimeout(timeout);
+              sub.close();
+              resolve(events);
+            }
+          },
+          onclose() {
+            completedRelays++;
+            if (completedRelays === totalRelays) {
+              clearTimeout(timeout);
+              resolve(events);
+            }
+          },
+        });
 
-          // Track active connections
-          this.activeConnections.add(relay);
-        } catch (error) {
-          logger.error(`Error connecting to relay ${relay}:`, error);
-          completedRelays++;
-          if (completedRelays === totalRelays) {
-            clearTimeout(timeout);
-            resolve(events);
+        // Update last used time for all active relays
+        const now = Date.now();
+        activeRelays.forEach((relay) => {
+          const connection = this.connections.get(relay);
+          if (connection) {
+            connection.lastUsed = now;
           }
-        }
-      });
+        });
+      } catch (error) {
+        logger.error('Error querying relays:', error);
+        clearTimeout(timeout);
+        resolve(events);
+      }
     });
   }
 
@@ -316,20 +443,31 @@ export class NostrHelper {
   private closeConnections(relays: string[]): void {
     try {
       this.pool.close(relays);
-      relays.forEach((relay) => this.activeConnections.delete(relay));
+      relays.forEach((relay) => {
+        this.connections.delete(relay);
+      });
     } catch (error) {
       logger.error('Error closing relay connections:', error);
     }
   }
 
   /**
-   * Close all connections
+   * Close all connections and cleanup
    */
   public closeAllConnections(): void {
     try {
-      const allRelays = Array.from(this.activeConnections);
-      this.pool.close(allRelays);
-      this.activeConnections.clear();
+      // Clear the cleanup interval
+      if (this.cleanupInterval) {
+        clearInterval(this.cleanupInterval);
+      }
+
+      // Close all active connections
+      const allRelays = Array.from(this.connections.keys());
+      if (allRelays.length > 0) {
+        this.pool.close(allRelays);
+      }
+
+      this.connections.clear();
       logger.info('All Nostr relay connections closed');
     } catch (error) {
       logger.error('Error closing all relay connections:', error);
@@ -340,9 +478,13 @@ export class NostrHelper {
    * Get connection statistics
    */
   public getStats(): { activeConnections: number; connectedRelays: string[] } {
+    const connectedRelays = Array.from(this.connections.values())
+      .filter((conn) => conn.isConnected)
+      .map((conn) => conn.url);
+
     return {
-      activeConnections: this.activeConnections.size,
-      connectedRelays: Array.from(this.activeConnections),
+      activeConnections: connectedRelays.length,
+      connectedRelays: connectedRelays,
     };
   }
 }
