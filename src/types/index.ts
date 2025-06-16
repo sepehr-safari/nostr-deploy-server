@@ -24,6 +24,16 @@ export interface ServerConfig {
   trustProxy: boolean;
   requestTimeoutMs: number;
   maxFileSizeMB: number;
+  // SSR Configuration
+  ssrEnabled: boolean;
+  ssrTimeoutMs: number;
+  ssrCacheTtlSeconds: number;
+  ssrViewportWidth: number;
+  ssrViewportHeight: number;
+  ssrMaxConcurrentPages: number;
+  // WebSocket Connection Pooling Configuration
+  wsConnectionTimeoutMs: number;
+  wsCleanupIntervalMs: number;
 }
 
 export interface StaticFileEvent extends NostrEvent {
