@@ -30,9 +30,14 @@ export class BlossomHelper {
     const cached = fileContentCache.get(cacheKey);
     if (cached) {
       logger.debug(`File cache hit for ${sha256.substring(0, 8)}...`);
+
+      // Get content type and fix it if necessary
+      let contentType = this.getContentTypeFromPath(path || '');
+      contentType = this.fixMimeType(contentType, path || '', cached);
+
       return {
         content: cached,
-        contentType: this.getContentTypeFromPath(path || ''),
+        contentType: contentType,
         contentLength: cached.length,
         sha256,
       };
