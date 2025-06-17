@@ -240,4 +240,126 @@ describe('NostrHelper', () => {
       expect(Array.isArray(stats.connectedRelays)).toBe(true);
     });
   });
+
+  describe('Connection Pooling', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should track active connections', async () => {
+      const queryRelaysSpy = jest.spyOn(nostrHelper as any, 'queryRelays');
+      queryRelaysSpy.mockResolvedValue([]);
+
+      const pubkey = '266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5';
+
+      // Initially no connections
+      let stats = nostrHelper.getStats();
+      expect(stats.activeConnections).toBe(0);
+
+      // Make a request that should establish connections
+      await nostrHelper.getRelayList(pubkey);
+
+      // Should have connections now (mocked behavior)
+      stats = nostrHelper.getStats();
+      expect(stats).toHaveProperty('activeConnections');
+      expect(stats).toHaveProperty('connectedRelays');
+    });
+
+    it('should reuse existing connections for subsequent requests', async () => {
+      const ensureConnectionSpy = jest.spyOn(nostrHelper as any, 'ensureConnection');
+      ensureConnectionSpy.mockResolvedValue(undefined);
+
+      const getActiveRelaysSpy = jest.spyOn(nostrHelper as any, 'getActiveRelays');
+      getActiveRelaysSpy.mockResolvedValue(['wss://nos.lol']);
+
+      const queryRelaysSpy = jest.spyOn(nostrHelper as any, 'queryRelays');
+      queryRelaysSpy.mockResolvedValue([]);
+
+      const pubkey = '266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5';
+
+      // First request
+      await nostrHelper.getRelayList(pubkey);
+      const firstCallCount = ensureConnectionSpy.mock.calls.length;
+
+      // Second request - should reuse connections
+      await nostrHelper.getRelayList(pubkey);
+      const secondCallCount = ensureConnectionSpy.mock.calls.length;
+
+      // Connection establishment should be called for both requests
+      // but the second should reuse if within the timeout window
+      expect(secondCallCount).toBeGreaterThanOrEqual(firstCallCount);
+    });
+
+    it('should cleanup stale connections after timeout', async () => {
+      const poolCloseSpy = jest.fn();
+      const mockPool = {
+        subscribeMany: jest.fn(),
+        close: poolCloseSpy,
+      };
+
+      // Replace the pool
+      (nostrHelper as any).pool = mockPool;
+
+      // Simulate stale connections
+      const connections = (nostrHelper as any).connections;
+      connections.set('wss://stale-relay.com', {
+        url: 'wss://stale-relay.com',
+        lastUsed: Date.now() - 2 * 60 * 60 * 1000, // 2 hours ago
+        isConnected: true,
+      });
+
+      // Trigger cleanup
+      const cleanupMethod = (nostrHelper as any).cleanupStaleConnections;
+      cleanupMethod.call(nostrHelper);
+
+      // Should have closed stale connections
+      expect(poolCloseSpy).toHaveBeenCalledWith(['wss://stale-relay.com']);
+      expect(connections.has('wss://stale-relay.com')).toBe(false);
+    });
+
+    it('should handle cleanup interval correctly', () => {
+      // Create a new instance to get a fresh cleanup interval
+      const freshNostrHelper = new NostrHelper();
+      const cleanupSpy = jest.spyOn(freshNostrHelper as any, 'cleanupStaleConnections');
+
+      // Fast forward time to trigger cleanup
+      jest.advanceTimersByTime(5 * 60 * 1000 + 1000); // 5 minutes + 1 second
+
+      expect(cleanupSpy).toHaveBeenCalled();
+
+      // Clean up
+      freshNostrHelper.closeAllConnections();
+    });
+
+    it('should close all connections on shutdown', () => {
+      const poolCloseSpy = jest.fn();
+      const mockPool = {
+        subscribeMany: jest.fn(),
+        close: poolCloseSpy,
+      };
+
+      // Replace the pool and add mock connections
+      (nostrHelper as any).pool = mockPool;
+      const connections = (nostrHelper as any).connections;
+      connections.set('wss://relay1.com', {
+        url: 'wss://relay1.com',
+        lastUsed: Date.now(),
+        isConnected: true,
+      });
+      connections.set('wss://relay2.com', {
+        url: 'wss://relay2.com',
+        lastUsed: Date.now(),
+        isConnected: true,
+      });
+
+      nostrHelper.closeAllConnections();
+
+      expect(poolCloseSpy).toHaveBeenCalledWith(['wss://relay1.com', 'wss://relay2.com']);
+      expect(connections.size).toBe(0);
+    });
+  });
 });

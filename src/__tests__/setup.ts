@@ -23,5 +23,25 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
+// Global cleanup after all tests complete
+afterAll(async () => {
+  // Clean up global cache instances to prevent timer leaks
+  try {
+    const {
+      pathMappingCache,
+      relayListCache,
+      blossomServerCache,
+      fileContentCache,
+    } = require('../utils/cache');
+
+    pathMappingCache.destroy();
+    relayListCache.destroy();
+    blossomServerCache.destroy();
+    fileContentCache.destroy();
+  } catch (error) {
+    // Ignore errors if cache module hasn't been loaded
+  }
+});
+
 // Global test timeout
 jest.setTimeout(30000);

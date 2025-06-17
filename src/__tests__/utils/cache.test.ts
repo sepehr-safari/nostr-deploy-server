@@ -95,15 +95,17 @@ describe('MemoryCache', () => {
       // Set max size to 2 for testing
       const smallCache = new MemoryCache<string>();
 
-      // Fill cache to max size
-      for (let i = 0; i < 10; i++) {
-        smallCache.set(`key${i}`, `value${i}`);
+      try {
+        // Fill cache to max size
+        for (let i = 0; i < 10; i++) {
+          smallCache.set(`key${i}`, `value${i}`);
+        }
+
+        // Cache should have evicted older entries
+        expect(smallCache.size()).toBeLessThanOrEqual(10);
+      } finally {
+        smallCache.destroy();
       }
-
-      // Cache should have evicted older entries
-      expect(smallCache.size()).toBeLessThanOrEqual(10);
-
-      smallCache.destroy();
     });
   });
 

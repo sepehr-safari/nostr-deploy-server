@@ -3,6 +3,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { BlossomHelper } from './helpers/blossom';
 import { NostrHelper } from './helpers/nostr';
+import { SimpleSSRHelper } from './helpers/ssr-simple';
 import { ConfigManager } from './utils/config';
 import { logger } from './utils/logger';
 
@@ -11,6 +12,7 @@ const configManager = ConfigManager.getInstance();
 const config = configManager.getConfig();
 const nostrHelper = new NostrHelper();
 const blossomHelper = new BlossomHelper();
+const ssrHelper = new SimpleSSRHelper();
 
 // Create Express app
 const app = express();
@@ -115,6 +117,7 @@ app.get('/admin/stats', async (req: Request, res: Response) => {
   try {
     const nostrStats = nostrHelper.getStats();
     const blossomStats = await blossomHelper.getServerStats(config.defaultBlossomServers);
+    const ssrStats = await ssrHelper.getBrowserStats();
 
     res.json({
       timestamp: new Date().toISOString(),
@@ -128,6 +131,10 @@ app.get('/admin/stats', async (req: Request, res: Response) => {
         connectedRelays: nostrStats.connectedRelays,
       },
       blossom: blossomStats,
+      ssr: {
+        browserConnected: ssrStats.isConnected,
+        activePagesCount: ssrStats.pagesCount,
+      },
       rateLimit: {
         activeIPs: requestCounts.size,
         windowMs: config.rateLimitWindowMs,
@@ -209,30 +216,86 @@ app.get('*', async (req: Request, res: Response) => {
       return;
     }
 
+    // Check if this file should be SSR rendered
+    const shouldSSR = ssrHelper.shouldRenderSSR(
+      fileResponse.contentType,
+      normalizedPath,
+      req.get('User-Agent')
+    );
+    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+
+    let finalContent: string | Buffer;
+    let finalContentType: string;
+    let finalContentLength: number;
+
+    if (shouldSSR) {
+      logger.debug(`SSR rendering ${normalizedPath} for ${hostname}`);
+
+      try {
+        // Use SSR to render the page
+        const ssrResult = await ssrHelper.renderPage(
+          fullUrl,
+          Buffer.from(fileResponse.content),
+          fileResponse.contentType
+        );
+
+        finalContent = ssrResult.html;
+        finalContentType = ssrResult.contentType;
+        finalContentLength = Buffer.byteLength(finalContent, 'utf8');
+
+        logger.info(`SSR completed for ${normalizedPath} (${finalContentLength} bytes)`);
+      } catch (ssrError) {
+        logger.error(
+          `SSR failed for ${normalizedPath}, falling back to original content:`,
+          ssrError
+        );
+        // Fallback to original content
+        finalContent = Buffer.from(fileResponse.content);
+        finalContentType = fileResponse.contentType;
+        finalContentLength = fileResponse.contentLength;
+      }
+    } else {
+      // Use original content for non-HTML files
+      finalContent = Buffer.from(fileResponse.content);
+      finalContentType = fileResponse.contentType;
+      finalContentLength = fileResponse.contentLength;
+
+      // Log content type for debugging
+      logger.debug(`Serving asset ${normalizedPath} with content-type: ${finalContentType}`);
+    }
+
     // Set response headers
     res.set({
-      'Content-Type': fileResponse.contentType,
-      'Content-Length': fileResponse.contentLength.toString(),
-      'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
-      ETag: `"${sha256}"`,
+      'Content-Type': finalContentType,
+      'Content-Length': finalContentLength.toString(),
+      'Cache-Control': shouldSSR
+        ? `public, max-age=${config.ssrCacheTtlSeconds}`
+        : 'public, max-age=3600', // Use config for SSR cache
+      ETag: `"${sha256}${shouldSSR ? '-ssr' : ''}"`,
       'X-Content-SHA256': sha256,
       'X-Served-By': 'Nostr-Static-Server',
+      'X-SSR-Rendered': shouldSSR ? 'true' : 'false',
     });
 
     // Handle conditional requests
     const ifNoneMatch = req.get('If-None-Match');
-    if (ifNoneMatch === `"${sha256}"`) {
+    const expectedETag = `"${sha256}${shouldSSR ? '-ssr' : ''}"`;
+    if (ifNoneMatch === expectedETag) {
       res.status(304).end();
       return;
     }
 
     // Send file content
-    res.send(Buffer.from(fileResponse.content));
+    if (typeof finalContent === 'string') {
+      res.send(finalContent);
+    } else {
+      res.send(finalContent);
+    }
 
     logger.info(
-      `Successfully served ${normalizedPath} (${
-        fileResponse.contentLength
-      } bytes) for pubkey: ${pubkey.substring(0, 8)}...`
+      `Successfully served ${normalizedPath} (${finalContentLength} bytes${
+        shouldSSR ? ', SSR rendered' : ''
+      }) for pubkey: ${pubkey.substring(0, 8)}...`
     );
   } catch (error) {
     logger.error(`Error serving request for ${hostname}${requestPath}:`, error);
@@ -292,6 +355,11 @@ const gracefulShutdown = () => {
 
     // Close Nostr connections
     nostrHelper.closeAllConnections();
+
+    // Close SSR browser
+    ssrHelper.close().catch((error) => {
+      logger.error('Error closing SSR helper:', error);
+    });
 
     // Clean up caches
     const {

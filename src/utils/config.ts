@@ -27,6 +27,16 @@ export class ConfigManager {
       trustProxy: process.env.TRUST_PROXY === 'true',
       requestTimeoutMs: parseInt(process.env.REQUEST_TIMEOUT_MS || '30000', 10),
       maxFileSizeMB: parseInt(process.env.MAX_FILE_SIZE_MB || '50', 10),
+      // SSR Configuration
+      ssrEnabled: process.env.SSR_ENABLED !== 'false', // Enabled by default
+      ssrTimeoutMs: parseInt(process.env.SSR_TIMEOUT_MS || '60000', 10), // Increased to 60 seconds
+      ssrCacheTtlSeconds: parseInt(process.env.SSR_CACHE_TTL_SECONDS || '1800', 10), // 30 minutes
+      ssrViewportWidth: parseInt(process.env.SSR_VIEWPORT_WIDTH || '1920', 10),
+      ssrViewportHeight: parseInt(process.env.SSR_VIEWPORT_HEIGHT || '1080', 10),
+      ssrMaxConcurrentPages: parseInt(process.env.SSR_MAX_CONCURRENT_PAGES || '3', 10),
+      // WebSocket Connection Pooling Configuration
+      wsConnectionTimeoutMs: parseInt(process.env.WS_CONNECTION_TIMEOUT_MS || '3600000', 10), // 1 hour default
+      wsCleanupIntervalMs: parseInt(process.env.WS_CLEANUP_INTERVAL_MS || '300000', 10), // 5 minutes default
     };
 
     this.validateConfig();
@@ -112,6 +122,36 @@ export class ConfigManager {
 
     if (config.maxFileSizeMB < 1) {
       throw new Error('Max file size must be at least 1MB');
+    }
+
+    // SSR validation
+    if (config.ssrTimeoutMs < 1000) {
+      throw new Error('SSR timeout must be at least 1000ms');
+    }
+
+    if (config.ssrCacheTtlSeconds < 0) {
+      throw new Error('SSR cache TTL cannot be negative');
+    }
+
+    if (config.ssrViewportWidth < 320 || config.ssrViewportWidth > 3840) {
+      throw new Error('SSR viewport width must be between 320-3840 pixels');
+    }
+
+    if (config.ssrViewportHeight < 240 || config.ssrViewportHeight > 2160) {
+      throw new Error('SSR viewport height must be between 240-2160 pixels');
+    }
+
+    if (config.ssrMaxConcurrentPages < 1 || config.ssrMaxConcurrentPages > 10) {
+      throw new Error('SSR max concurrent pages must be between 1-10');
+    }
+
+    // WebSocket Connection Pooling Configuration
+    if (config.wsConnectionTimeoutMs < 1000) {
+      throw new Error('WS connection timeout must be at least 1000ms');
+    }
+
+    if (config.wsCleanupIntervalMs < 1000) {
+      throw new Error('WS cleanup interval must be at least 1000ms');
     }
   }
 
