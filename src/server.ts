@@ -20,6 +20,7 @@ app.use(
   helmet({
     contentSecurityPolicy: false, // Allow inline scripts for static sites
     crossOriginEmbedderPolicy: false, // Allow embedding
+    frameguard: false, // Allow embedding in iframes
   })
 );
 
