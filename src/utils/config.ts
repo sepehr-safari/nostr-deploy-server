@@ -13,10 +13,12 @@ export class ConfigManager {
       port: parseInt(process.env.PORT || '3000', 10),
       baseDomain: process.env.BASE_DOMAIN || '',
       defaultRelays: this.parseCommaSeparated(
-        process.env.DEFAULT_RELAYS || 'wss://nos.lol,wss://ditto.pub/relay,wss://relay.damus.io'
+        process.env.DEFAULT_RELAYS ||
+          'wss://relay.nostr.band,wss://nostrue.com,wss://purplerelay.com,wss://relay.primal.net'
       ),
       defaultBlossomServers: this.parseCommaSeparated(
-        process.env.DEFAULT_BLOSSOM_SERVERS || 'https://cdn.hzrd149.com,https://nostr.download'
+        process.env.DEFAULT_BLOSSOM_SERVERS ||
+          'https://cdn.hzrd149.com,https://blossom.primal.net,https://blossom.band,https://loratu.bitcointxoko.com,https://blossom.f7z.io'
       ),
       cacheTtlSeconds: parseInt(process.env.CACHE_TTL_SECONDS || '300', 10),
       maxCacheSize: parseInt(process.env.MAX_CACHE_SIZE || '100', 10),
