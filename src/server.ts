@@ -183,7 +183,13 @@ app.get('*', async (req: Request, res: Response) => {
 
     if (!sha256) {
       logger.warn(
-        `No file mapping found for ${normalizedPath} from pubkey: ${pubkey.substring(0, 8)}...`
+        `No file mapping found for ${normalizedPath} from pubkey: ${pubkey.substring(0, 8)}...`,
+        {
+          hostname,
+          path: normalizedPath,
+          pubkey: pubkey.substring(0, 16) + '...',
+          userAgent: req.get('User-Agent'),
+        }
       );
       res.status(404).json({
         error: 'Not Found',

@@ -259,7 +259,7 @@ export class NostrHelper {
         limit: 1,
       };
 
-      const events = await this.queryRelays(userRelays, filter, 5000);
+      const events = await this.queryRelays(userRelays, filter, 10000);
 
       if (events.length === 0) {
         logger.debug(
@@ -321,7 +321,18 @@ export class NostrHelper {
         limit: 1,
       };
 
-      const events = await this.queryRelays(userRelays, filter, 5000);
+      // Try with user relays first
+      let events = await this.queryRelays(userRelays, filter, 10000);
+
+      // If no events found and we have user relays, also try default relays as fallback
+      if (events.length === 0 && userRelays.length > 0) {
+        const config = this.config.getConfig();
+        const defaultRelays = config.defaultRelays.filter((relay) => !userRelays.includes(relay));
+        if (defaultRelays.length > 0) {
+          logger.debug(`No mapping found on user relays, trying default relays for ${path}`);
+          events = await this.queryRelays(defaultRelays, filter, 10000);
+        }
+      }
 
       if (events.length === 0) {
         // Try fallback to /404.html if not found
@@ -331,7 +342,7 @@ export class NostrHelper {
         }
 
         logger.debug(`No file mapping found for ${path} from pubkey: ${pubkey.substring(0, 8)}...`);
-        pathMappingCache.set(cacheKey, '', 60000); // Cache negative result for 1 minute
+        pathMappingCache.set(cacheKey, '', 10000); // Cache negative result for only 10 seconds
         return null;
       }
 
@@ -348,7 +359,7 @@ export class NostrHelper {
 
       if (!sha256) {
         logger.error(`Static file event missing SHA256 hash for path: ${path}`);
-        pathMappingCache.set(cacheKey, '', 60000); // Cache negative result for 1 minute
+        pathMappingCache.set(cacheKey, '', 10000); // Cache negative result for only 10 seconds
         return null;
       }
 
@@ -363,7 +374,7 @@ export class NostrHelper {
         path,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      pathMappingCache.set(cacheKey, '', 60000); // Cache negative result for 1 minute
+      pathMappingCache.set(cacheKey, '', 10000); // Cache negative result for only 10 seconds
       return null;
     }
   }
@@ -380,9 +391,14 @@ export class NostrHelper {
     const activeRelays = await this.getActiveRelays(relays);
 
     if (activeRelays.length === 0) {
-      logger.warn('No active relay connections available');
+      logger.warn('No active relay connections available for query', { relays });
       return [];
     }
+
+    logger.debug(`Querying ${activeRelays.length}/${relays.length} active relays`, {
+      active: activeRelays,
+      total: relays.length,
+    });
 
     return new Promise((resolve, reject) => {
       const events: NostrEvent[] = [];
