@@ -34,6 +34,13 @@ export interface ServerConfig {
   // WebSocket Connection Pooling Configuration
   wsConnectionTimeoutMs: number;
   wsCleanupIntervalMs: number;
+  // Cache TTL Configuration
+  negativeCacheTtlMs: number;
+  positiveCacheTtlMs: number;
+  fileContentCacheTtlMs: number;
+  errorCacheTtlMs: number;
+  // Query Timeout Configuration
+  relayQueryTimeoutMs: number;
 }
 
 export interface StaticFileEvent extends NostrEvent {

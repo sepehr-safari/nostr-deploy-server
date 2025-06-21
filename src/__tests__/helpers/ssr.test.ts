@@ -98,6 +98,13 @@ describe('SimpleSSRHelper', () => {
         ssrMaxConcurrentPages: 3,
         wsConnectionTimeoutMs: 3600000,
         wsCleanupIntervalMs: 300000,
+        // Cache TTL Configuration
+        negativeCacheTtlMs: 10000,
+        positiveCacheTtlMs: 300000,
+        fileContentCacheTtlMs: 1800000,
+        errorCacheTtlMs: 60000,
+        // Query Timeout Configuration
+        relayQueryTimeoutMs: 10000,
       };
 
       mockConfigManager.getConfig.mockReturnValue(disabledConfig);

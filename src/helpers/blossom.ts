@@ -49,7 +49,8 @@ export class BlossomHelper {
         const result = await this.fetchFromServer(server, sha256, path);
         if (result) {
           // Cache successful result
-          fileContentCache.set(cacheKey, result.content, 1800000); // Cache for 30 minutes
+          const config = this.config.getConfig();
+          fileContentCache.set(cacheKey, result.content, config.fileContentCacheTtlMs);
           logger.logBlossom('fetchFile', sha256, server, true, {
             size: result.contentLength,
             contentType: result.contentType,

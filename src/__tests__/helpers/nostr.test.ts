@@ -80,7 +80,12 @@ describe('NostrHelper', () => {
       const pubkey = '266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5';
       const relays = await nostrHelper.getRelayList(pubkey);
 
-      expect(relays).toEqual(['wss://nos.lol', 'wss://ditto.pub/relay', 'wss://relay.damus.io']);
+      expect(relays).toEqual([
+        'wss://relay.nostr.band',
+        'wss://nostrue.com',
+        'wss://purplerelay.com',
+        'wss://relay.primal.net',
+      ]);
     });
 
     it('should parse relay list from event', async () => {
@@ -121,7 +126,13 @@ describe('NostrHelper', () => {
       const pubkey = '266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5';
       const servers = await nostrHelper.getBlossomServers(pubkey);
 
-      expect(servers).toEqual(['https://cdn.hzrd149.com', 'https://nostr.download']);
+      expect(servers).toEqual([
+        'https://cdn.hzrd149.com',
+        'https://blossom.primal.net',
+        'https://blossom.band',
+        'https://loratu.bitcointxoko.com',
+        'https://blossom.f7z.io',
+      ]);
     });
 
     it('should parse server list from event', async () => {
