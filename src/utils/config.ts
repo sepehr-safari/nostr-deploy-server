@@ -39,6 +39,13 @@ export class ConfigManager {
       // WebSocket Connection Pooling Configuration
       wsConnectionTimeoutMs: parseInt(process.env.WS_CONNECTION_TIMEOUT_MS || '3600000', 10), // 1 hour default
       wsCleanupIntervalMs: parseInt(process.env.WS_CLEANUP_INTERVAL_MS || '300000', 10), // 5 minutes default
+      // Cache TTL Configuration
+      negativeCacheTtlMs: parseInt(process.env.NEGATIVE_CACHE_TTL_MS || '10000', 10), // 10 seconds default
+      positiveCacheTtlMs: parseInt(process.env.POSITIVE_CACHE_TTL_MS || '300000', 10), // 5 minutes default
+      fileContentCacheTtlMs: parseInt(process.env.FILE_CONTENT_CACHE_TTL_MS || '1800000', 10), // 30 minutes default
+      errorCacheTtlMs: parseInt(process.env.ERROR_CACHE_TTL_MS || '60000', 10), // 1 minute default
+      // Query Timeout Configuration
+      relayQueryTimeoutMs: parseInt(process.env.RELAY_QUERY_TIMEOUT_MS || '10000', 10), // 10 seconds default
     };
 
     this.validateConfig();
@@ -154,6 +161,28 @@ export class ConfigManager {
 
     if (config.wsCleanupIntervalMs < 1000) {
       throw new Error('WS cleanup interval must be at least 1000ms');
+    }
+
+    // Cache TTL Configuration
+    if (config.negativeCacheTtlMs < 0) {
+      throw new Error('Negative cache TTL cannot be negative');
+    }
+
+    if (config.positiveCacheTtlMs < 1000) {
+      throw new Error('Positive cache TTL must be at least 1000ms');
+    }
+
+    if (config.fileContentCacheTtlMs < 1000) {
+      throw new Error('File content cache TTL must be at least 1000ms');
+    }
+
+    if (config.errorCacheTtlMs < 0) {
+      throw new Error('Error cache TTL cannot be negative');
+    }
+
+    // Query Timeout Configuration
+    if (config.relayQueryTimeoutMs < 1000) {
+      throw new Error('Relay query timeout must be at least 1000ms');
     }
   }
 

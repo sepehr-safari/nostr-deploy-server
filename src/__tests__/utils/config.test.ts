@@ -41,13 +41,17 @@ describe('ConfigManager', () => {
       expect(config.port).toBe(3001); // From test setup
       expect(config.baseDomain).toBe('test.example.com'); // From test setup
       expect(config.defaultRelays).toEqual([
-        'wss://nos.lol',
-        'wss://ditto.pub/relay',
-        'wss://relay.damus.io',
+        'wss://relay.nostr.band',
+        'wss://nostrue.com',
+        'wss://purplerelay.com',
+        'wss://relay.primal.net',
       ]);
       expect(config.defaultBlossomServers).toEqual([
         'https://cdn.hzrd149.com',
-        'https://nostr.download',
+        'https://blossom.primal.net',
+        'https://blossom.band',
+        'https://loratu.bitcointxoko.com',
+        'https://blossom.f7z.io',
       ]);
       expect(config.cacheTtlSeconds).toBe(60); // From test setup
       expect(config.maxCacheSize).toBe(10); // From test setup
