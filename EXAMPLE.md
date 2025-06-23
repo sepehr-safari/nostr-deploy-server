@@ -80,10 +80,10 @@ NODE_ENV=production
 BASE_DOMAIN=npubsites.com
 
 # Default relays (used when user has no relay list)
-DEFAULT_RELAYS=wss://relay.nostr.band,wss://nostrue.com,wss://purplerelay.com,wss://relay.primal.net
+DEFAULT_RELAYS=wss://relay.nostr.band,wss://nostrue.com,wss://purplerelay.com,wss://relay.primal.net,wss://nos.lol,wss://relay.damus.io,wss://relay.nsite.lol
 
 # Default Blossom servers (used when user has no server list)
-DEFAULT_BLOSSOM_SERVERS=https://cdn.hzrd149.com,https://blossom.primal.net,https://blossom.band,https://loratu.bitcointxoko.com,https://blossom.f7z.io
+DEFAULT_BLOSSOM_SERVERS=https://cdn.hzrd149.com,https://blossom.primal.net,https://blossom.band,https://loratu.bitcointxoko.com,https://blossom.f7z.io,https://cdn.sovbit.host
 
 # Performance settings
 CACHE_TTL_SECONDS=300

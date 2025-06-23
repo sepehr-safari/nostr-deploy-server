@@ -87,10 +87,10 @@ NODE_ENV=production
 BASE_DOMAIN=example.com
 
 # Default Nostr Relays (comma-separated)
-DEFAULT_RELAYS=wss://relay.nostr.band,wss://nostrue.com,wss://purplerelay.com,wss://relay.primal.net
+DEFAULT_RELAYS=wss://relay.nostr.band,wss://nostrue.com,wss://purplerelay.com,wss://relay.primal.net,wss://nos.lol,wss://relay.damus.io,wss://relay.nsite.lol
 
 # Default Blossom Servers (comma-separated)
-DEFAULT_BLOSSOM_SERVERS=https://cdn.hzrd149.com,https://blossom.primal.net,https://blossom.band,https://loratu.bitcointxoko.com,https://blossom.f7z.io
+DEFAULT_BLOSSOM_SERVERS=https://cdn.hzrd149.com,https://blossom.primal.net,https://blossom.band,https://loratu.bitcointxoko.com,https://blossom.f7z.io,https://cdn.sovbit.host
 
 # Caching Configuration
 CACHE_TTL_SECONDS=300

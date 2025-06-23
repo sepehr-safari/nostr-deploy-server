@@ -14,11 +14,11 @@ export class ConfigManager {
       baseDomain: process.env.BASE_DOMAIN || '',
       defaultRelays: this.parseCommaSeparated(
         process.env.DEFAULT_RELAYS ||
-          'wss://relay.nostr.band,wss://nostrue.com,wss://purplerelay.com,wss://relay.primal.net'
+          'wss://relay.nostr.band,wss://nostrue.com,wss://purplerelay.com,wss://relay.primal.net,wss://nos.lol,wss://relay.damus.io,wss://relay.nsite.lol'
       ),
       defaultBlossomServers: this.parseCommaSeparated(
         process.env.DEFAULT_BLOSSOM_SERVERS ||
-          'https://cdn.hzrd149.com,https://blossom.primal.net,https://blossom.band,https://loratu.bitcointxoko.com,https://blossom.f7z.io'
+          'https://cdn.hzrd149.com,https://blossom.primal.net,https://blossom.band,https://loratu.bitcointxoko.com,https://blossom.f7z.io,https://cdn.sovbit.host'
       ),
       cacheTtlSeconds: parseInt(process.env.CACHE_TTL_SECONDS || '300', 10),
       maxCacheSize: parseInt(process.env.MAX_CACHE_SIZE || '100', 10),
@@ -30,7 +30,7 @@ export class ConfigManager {
       requestTimeoutMs: parseInt(process.env.REQUEST_TIMEOUT_MS || '30000', 10),
       maxFileSizeMB: parseInt(process.env.MAX_FILE_SIZE_MB || '50', 10),
       // SSR Configuration
-      ssrEnabled: process.env.SSR_ENABLED !== 'false', // Enabled by default
+      ssrEnabled: process.env.SSR_ENABLED === 'true', // Default is false
       ssrTimeoutMs: parseInt(process.env.SSR_TIMEOUT_MS || '60000', 10), // Increased to 60 seconds
       ssrCacheTtlSeconds: parseInt(process.env.SSR_CACHE_TTL_SECONDS || '1800', 10), // 30 minutes
       ssrViewportWidth: parseInt(process.env.SSR_VIEWPORT_WIDTH || '1920', 10),
