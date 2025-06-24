@@ -225,9 +225,26 @@ export class SimpleSSRHelper {
   }
 
   /**
-   * No persistent browser to close in this simple implementation
+   * Close any open browser instances
    */
   async close(): Promise<void> {
-    logger.info('Simple SSR helper closed (no persistent browser)');
+    // This implementation uses fresh browser instances for each request
+    // so there's nothing persistent to close
+    logger.debug('SimpleSSRHelper: No persistent browser to close');
+  }
+
+  /**
+   * Get browser statistics
+   */
+  async getBrowserStats(): Promise<{
+    isConnected: boolean;
+    pagesCount: number;
+  }> {
+    // Since we use fresh browser instances for each request,
+    // we don't have persistent browser connections to report on
+    return {
+      isConnected: false, // No persistent browser connection
+      pagesCount: 0, // No persistent pages
+    };
   }
 }

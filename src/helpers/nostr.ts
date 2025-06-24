@@ -474,22 +474,40 @@ export class NostrHelper {
    * Close all connections and cleanup
    */
   public closeAllConnections(): void {
-    try {
-      // Clear the cleanup interval
-      if (this.cleanupInterval) {
-        clearInterval(this.cleanupInterval);
-      }
-
-      // Close all active connections
-      const allRelays = Array.from(this.connections.keys());
-      if (allRelays.length > 0) {
-        this.pool.close(allRelays);
-      }
-
-      this.connections.clear();
-      logger.info('All Nostr relay connections closed');
-    } catch (error) {
-      logger.error('Error closing all relay connections:', error);
+    const allRelays = Array.from(this.connections.keys());
+    if (allRelays.length > 0) {
+      this.closeConnections(allRelays);
     }
+    this.connections.clear();
+
+    // Clear the cleanup interval
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+
+    logger.info('All Nostr connections closed');
+  }
+
+  /**
+   * Get connection statistics
+   */
+  public getStats(): {
+    activeConnections: number;
+    connectedRelays: string[];
+  } {
+    const connectedRelays: string[] = [];
+    let activeConnections = 0;
+
+    for (const [relayUrl, connection] of this.connections.entries()) {
+      if (connection.isConnected) {
+        connectedRelays.push(relayUrl);
+        activeConnections++;
+      }
+    }
+
+    return {
+      activeConnections,
+      connectedRelays,
+    };
   }
 }

@@ -85,6 +85,9 @@ describe('NostrHelper', () => {
         'wss://nostrue.com',
         'wss://purplerelay.com',
         'wss://relay.primal.net',
+        'wss://nos.lol',
+        'wss://relay.damus.io',
+        'wss://relay.nsite.lol',
       ]);
     });
 
@@ -132,6 +135,7 @@ describe('NostrHelper', () => {
         'https://blossom.band',
         'https://loratu.bitcointxoko.com',
         'https://blossom.f7z.io',
+        'https://cdn.sovbit.host',
       ]);
     });
 
