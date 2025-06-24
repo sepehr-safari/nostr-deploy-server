@@ -462,7 +462,7 @@ app.get('*', async (req: Request, res: Response) => {
                 <li><a href="#features">Features</a></li>
                 <li><a href="#how-it-works">How It Works</a></li>
                 <li><a href="#example">Example</a></li>
-                <li><a href="https://github.com/nostr-protocol/nips/" target="_blank">NIPs</a></li>
+                <li><a href="https://nostrhub.io" target="_blank">NIPs</a></li>
             </ul>
         </nav>
     </header>
@@ -665,7 +665,6 @@ app.get('*', async (req: Request, res: Response) => {
                     <a href="https://github.com/nostr-protocol/nostr" target="_blank">Nostr Protocol</a>
                     <a href="https://github.com/hzrd149/blossom" target="_blank">Blossom Protocol</a>
                     <a href="https://nostrhub.io/naddr1qvzqqqrcvypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qqt8qatzddjhjttnw3shg6tr94mk2cnnd96x2uch7k70g" target="_blank">NIP Specification</a>
-                    <a href="https://github.com/nostr-protocol/nips/" target="_blank">All NIPs</a>
                 </div>
                 <div class="footer-section">
                     <h3>Source Code</h3>
