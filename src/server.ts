@@ -90,63 +90,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
-  const nostrStats = nostrHelper.getStats();
-
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    nostr: {
-      activeConnections: nostrStats.activeConnections,
-      connectedRelays: nostrStats.connectedRelays.length,
-    },
-    config: {
-      baseDomain: config.baseDomain,
-      defaultRelays: config.defaultRelays.length,
-      defaultBlossomServers: config.defaultBlossomServers.length,
-    },
-  });
-});
-
-// Admin stats endpoint
-app.get('/admin/stats', async (req: Request, res: Response) => {
-  try {
-    const nostrStats = nostrHelper.getStats();
-    const blossomStats = await blossomHelper.getServerStats(config.defaultBlossomServers);
-    const ssrStats = await ssrHelper.getBrowserStats();
-
-    res.json({
-      timestamp: new Date().toISOString(),
-      server: {
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        nodeVersion: process.version,
-      },
-      nostr: {
-        activeConnections: nostrStats.activeConnections,
-        connectedRelays: nostrStats.connectedRelays,
-      },
-      blossom: blossomStats,
-      ssr: {
-        browserConnected: ssrStats.isConnected,
-        activePagesCount: ssrStats.pagesCount,
-      },
-      rateLimit: {
-        activeIPs: requestCounts.size,
-        windowMs: config.rateLimitWindowMs,
-        maxRequests: config.rateLimitMaxRequests,
-      },
-    });
-  } catch (error) {
-    logger.error('Error getting admin stats:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 // Landing page for main domain
 app.get('*', async (req: Request, res: Response) => {
   const hostname = req.hostname;

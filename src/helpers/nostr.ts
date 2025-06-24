@@ -492,18 +492,4 @@ export class NostrHelper {
       logger.error('Error closing all relay connections:', error);
     }
   }
-
-  /**
-   * Get connection statistics
-   */
-  public getStats(): { activeConnections: number; connectedRelays: string[] } {
-    const connectedRelays = Array.from(this.connections.values())
-      .filter((conn) => conn.isConnected)
-      .map((conn) => conn.url);
-
-    return {
-      activeConnections: connectedRelays.length,
-      connectedRelays: connectedRelays,
-    };
-  }
 }

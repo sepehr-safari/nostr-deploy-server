@@ -9,7 +9,7 @@ A Node.js server implementation for serving static websites under npub subdomain
 - **Zero Storage**: Acts as a pure proxy/gateway without storing any files locally
 - **Intelligent Caching**: In-memory caching with TTL for improved performance
 - **Automatic Fallbacks**: Falls back to `/404.html` for missing files and default servers when user configurations are unavailable
-- **Health Monitoring**: Built-in health checks and admin statistics endpoints
+
 - **Rate Limiting**: Configurable rate limiting to prevent abuse
 - **Graceful Shutdown**: Proper cleanup of connections and resources
 
@@ -160,22 +160,6 @@ sequenceDiagram
 - **Error Results**: 1 minute TTL
 
 ## 🔌 API Endpoints
-
-### Health Check
-
-```bash
-GET /health
-```
-
-Returns server status, uptime, and connection statistics.
-
-### Admin Statistics
-
-```bash
-GET /admin/stats
-```
-
-Returns detailed server statistics including Nostr connections, Blossom server health, and cache metrics.
 
 ### Static File Serving
 
@@ -365,11 +349,8 @@ WantedBy=multi-user.target
 # Enable debug logging
 LOG_LEVEL=debug npm start
 
-# Check server health
-curl http://localhost:3000/health
-
-# Check admin stats
-curl http://localhost:3000/admin/stats
+# Check if server is running
+curl http://localhost:3000
 ```
 
 ## 🤝 Contributing

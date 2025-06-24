@@ -365,21 +365,6 @@ export class SSRHelper {
   }
 
   /**
-   * Get browser statistics
-   */
-  async getBrowserStats(): Promise<{ isConnected: boolean; pagesCount: number }> {
-    if (!this.browser) {
-      return { isConnected: false, pagesCount: 0 };
-    }
-
-    const pages = await this.browser.pages();
-    return {
-      isConnected: this.browser.isConnected(),
-      pagesCount: pages.length,
-    };
-  }
-
-  /**
    * Close the browser and cleanup
    */
   async close(): Promise<void> {

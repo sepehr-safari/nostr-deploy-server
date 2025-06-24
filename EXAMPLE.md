@@ -187,40 +187,7 @@ X-Served-By: Nostr-Static-Server
 
 ## Testing the Server
 
-### 1. Health Check
-
-```bash
-curl http://localhost:3000/health
-```
-
-Response:
-
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-15T10:30:00.000Z",
-  "version": "1.0.0",
-  "uptime": 3600,
-  "memory": {...},
-  "nostr": {
-    "activeConnections": 0,
-    "connectedRelays": 0
-  },
-  "config": {
-    "baseDomain": "npubsites.com",
-    "defaultRelays": 4,
-    "defaultBlossomServers": 2
-  }
-}
-```
-
-### 2. Admin Statistics
-
-```bash
-curl http://localhost:3000/admin/stats
-```
-
-### 3. Test Static File Serving
+### 1. Test Static File Serving
 
 ```bash
 # Replace with a real npub subdomain
@@ -274,8 +241,7 @@ If all Blossom servers are unreachable:
 Monitor cache performance:
 
 ```bash
-# Check admin stats for cache metrics
-curl http://localhost:3000/admin/stats | jq '.cache'
+# Cache performance is monitored via server logs
 ```
 
 ### Response Times

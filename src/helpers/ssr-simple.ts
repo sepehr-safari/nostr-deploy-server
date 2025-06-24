@@ -230,11 +230,4 @@ export class SimpleSSRHelper {
   async close(): Promise<void> {
     logger.info('Simple SSR helper closed (no persistent browser)');
   }
-
-  /**
-   * Get browser statistics (simplified for this implementation)
-   */
-  async getBrowserStats(): Promise<{ isConnected: boolean; pagesCount: number }> {
-    return { isConnected: false, pagesCount: 0 };
-  }
 }
