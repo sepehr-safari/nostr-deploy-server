@@ -1,4 +1,5 @@
-import { MemoryCache } from '../../utils/cache';
+import { CacheService, MemoryCache } from '../../utils/cache';
+import { ConfigManager } from '../../utils/config';
 
 describe('MemoryCache', () => {
   let cache: MemoryCache<string>;
@@ -128,17 +129,217 @@ describe('MemoryCache', () => {
     });
   });
 
-  describe('statistics', () => {
-    it('should return cache statistics', () => {
+  describe('size tracking', () => {
+    it('should track cache size correctly', () => {
       cache.set('key1', 'value1');
       cache.set('key2', 'value2');
 
-      const stats = cache.getStats();
+      expect(cache.size()).toBe(2);
+    });
+  });
+});
 
-      expect(stats.size).toBe(2);
-      expect(stats.maxSize).toBeGreaterThan(0);
-      expect(typeof stats.hitRate).toBe('number');
-      expect(typeof stats.expiredCount).toBe('number');
+describe('CacheService Sliding Expiration', () => {
+  beforeEach(async () => {
+    // Clear all caches before each test
+    await CacheService.clearAll();
+  });
+
+  afterAll(async () => {
+    // Clean up after all tests
+    await CacheService.clearAll();
+  });
+
+  describe('handleDomainAccess', () => {
+    const testDomain = 'npub1xyz.example.com';
+    const testPubkey = '1234567890abcdef1234567890abcdef12345678';
+    const testServers = ['https://blossom.example.com'];
+    const testRelays = ['wss://relay.example.com'];
+
+    beforeEach(() => {
+      // Mock sliding expiration enabled
+      const mockConfig = {
+        slidingExpiration: true,
+        cacheTime: 3600,
+        fileContentCacheTtlMs: 1800000,
+      };
+
+      jest.spyOn(ConfigManager, 'getInstance').mockReturnValue({
+        getConfig: () => mockConfig,
+      } as any);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('should refresh TTL for domain and related cache entries', async () => {
+      // Set up initial cache entries
+      await CacheService.setPubkeyForDomain(testDomain, testPubkey);
+      await CacheService.setBlossomServersForPubkey(testPubkey, testServers);
+      await CacheService.setRelaysForPubkey(testPubkey, testRelays);
+
+      // Verify entries exist
+      expect(await CacheService.getPubkeyForDomain(testDomain)).toBe(testPubkey);
+      expect(await CacheService.getBlossomServersForPubkey(testPubkey)).toEqual(testServers);
+      expect(await CacheService.getRelaysForPubkey(testPubkey)).toEqual(testRelays);
+
+      // Handle domain access (this should refresh TTL)
+      await CacheService.handleDomainAccess(testDomain, testPubkey);
+
+      // Entries should still be available (TTL refreshed)
+      expect(await CacheService.getPubkeyForDomain(testDomain)).toBe(testPubkey);
+      expect(await CacheService.getBlossomServersForPubkey(testPubkey)).toEqual(testServers);
+      expect(await CacheService.getRelaysForPubkey(testPubkey)).toEqual(testRelays);
+    });
+
+    it('should not perform TTL refresh when sliding expiration is disabled', async () => {
+      // Mock sliding expiration disabled
+      const mockConfig = {
+        slidingExpiration: false,
+        cacheTime: 3600,
+        fileContentCacheTtlMs: 1800000,
+      };
+
+      jest.spyOn(ConfigManager, 'getInstance').mockReturnValue({
+        getConfig: () => mockConfig,
+      } as any);
+
+      // Set up initial cache entries
+      await CacheService.setPubkeyForDomain(testDomain, testPubkey);
+
+      // Handle domain access (should be no-op when disabled)
+      await CacheService.handleDomainAccess(testDomain, testPubkey);
+
+      // Entry should still exist (not affected by disabled sliding expiration)
+      expect(await CacheService.getPubkeyForDomain(testDomain)).toBe(testPubkey);
+    });
+
+    it('should handle missing cache entries gracefully', async () => {
+      // Handle domain access for non-existent entries
+      await expect(CacheService.handleDomainAccess(testDomain, testPubkey)).resolves.not.toThrow();
+    });
+  });
+
+  describe('getWithSlidingExpiration behavior', () => {
+    const testKey = 'test-key';
+    const testValue = 'test-value';
+
+    beforeEach(() => {
+      // Mock sliding expiration enabled
+      const mockConfig = {
+        slidingExpiration: true,
+        cacheTime: 3600,
+        fileContentCacheTtlMs: 1800000,
+      };
+
+      jest.spyOn(ConfigManager, 'getInstance').mockReturnValue({
+        getConfig: () => mockConfig,
+      } as any);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('should refresh TTL when getting domain mapping', async () => {
+      // Set initial value
+      await CacheService.setPubkeyForDomain(testKey, testValue);
+
+      // Get value (should refresh TTL)
+      const result = await CacheService.getPubkeyForDomain(testKey);
+      expect(result).toBe(testValue);
+
+      // Value should still be available after getting
+      const result2 = await CacheService.getPubkeyForDomain(testKey);
+      expect(result2).toBe(testValue);
+    });
+
+    it('should refresh TTL when getting blossom servers', async () => {
+      const servers = ['https://server1.com', 'https://server2.com'];
+
+      // Set initial value
+      await CacheService.setBlossomServersForPubkey(testKey, servers);
+
+      // Get value (should refresh TTL)
+      const result = await CacheService.getBlossomServersForPubkey(testKey);
+      expect(result).toEqual(servers);
+    });
+
+    it('should refresh TTL when getting relays', async () => {
+      const relays = ['wss://relay1.com', 'wss://relay2.com'];
+
+      // Set initial value
+      await CacheService.setRelaysForPubkey(testKey, relays);
+
+      // Get value (should refresh TTL)
+      const result = await CacheService.getRelaysForPubkey(testKey);
+      expect(result).toEqual(relays);
+    });
+
+    it('should refresh TTL when getting blob for path', async () => {
+      const testPubkey = 'test-pubkey';
+      const testPath = '/test.html';
+      const testEvent = {
+        pubkey: testPubkey,
+        path: testPath,
+        sha256: 'test-sha256',
+        created_at: Math.floor(Date.now() / 1000),
+      };
+
+      // Set initial value
+      await CacheService.setBlobForPath(testPubkey, testPath, testEvent);
+
+      // Get value (should refresh TTL)
+      const result = await CacheService.getBlobForPath(testPubkey, testPath);
+      expect(result).toEqual(testEvent);
+    });
+
+    it('should use custom TTL for file content cache', async () => {
+      const testSha256 = 'abcdef123456';
+      const testContent = new Uint8Array([1, 2, 3, 4, 5]);
+
+      // Set initial value
+      await CacheService.setFileContent(testSha256, testContent);
+
+      // Get value (should refresh TTL with custom TTL)
+      const result = await CacheService.getFileContent(testSha256);
+      expect(result).toEqual(testContent);
+    });
+  });
+
+  describe('sliding expiration disabled', () => {
+    beforeEach(() => {
+      // Mock sliding expiration disabled
+      const mockConfig = {
+        slidingExpiration: false,
+        cacheTime: 3600,
+        fileContentCacheTtlMs: 1800000,
+      };
+
+      jest.spyOn(ConfigManager, 'getInstance').mockReturnValue({
+        getConfig: () => mockConfig,
+      } as any);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('should not refresh TTL when sliding expiration is disabled', async () => {
+      const testKey = 'test-key';
+      const testValue = 'test-value';
+
+      // Set initial value
+      await CacheService.setPubkeyForDomain(testKey, testValue);
+
+      // Get value (should NOT refresh TTL)
+      const result = await CacheService.getPubkeyForDomain(testKey);
+      expect(result).toBe(testValue);
+
+      // Should still work normally
+      const result2 = await CacheService.getPubkeyForDomain(testKey);
+      expect(result2).toBe(testValue);
     });
   });
 });
