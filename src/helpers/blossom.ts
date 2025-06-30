@@ -1,7 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
 import * as mimeTypes from 'mime-types';
 import { FileResponse } from '../types';
-import { fileContentCache } from '../utils/cache';
+import { CacheService } from '../utils/cache';
 import { ConfigManager } from '../utils/config';
 import { logger } from '../utils/logger';
 
@@ -25,11 +25,16 @@ export class BlossomHelper {
     servers: string[],
     path?: string
   ): Promise<FileResponse | null> {
+    logger.debug(`🔍 BlossomHelper.fetchFile called for ${sha256.substring(0, 8)}...`);
+
     // Check cache first
-    const cacheKey = `file:${sha256}`;
-    const cached = fileContentCache.get(cacheKey);
+    logger.debug(`🗄️  Checking cache for ${sha256.substring(0, 8)}...`);
+    const cached = await CacheService.getFileContent(sha256);
     if (cached) {
-      logger.debug(`File cache hit for ${sha256.substring(0, 8)}...`);
+      logger.info(`🎯 File cache HIT for ${sha256.substring(0, 8)}... (${cached.length} bytes)`);
+      logger.debug(
+        `Cache hit details: content type: ${cached.constructor.name}, length: ${cached.length}`
+      );
 
       // Get content type and fix it if necessary
       let contentType = this.getContentTypeFromPath(path || '');
@@ -41,19 +46,50 @@ export class BlossomHelper {
         contentLength: cached.length,
         sha256,
       };
+    } else {
+      logger.info(
+        `💔 File cache MISS for ${sha256.substring(0, 8)}... - fetching from Blossom servers`
+      );
     }
 
     // Try each server in sequence
     for (const server of servers) {
       try {
+        logger.debug(`🌐 Attempting to fetch ${sha256.substring(0, 8)}... from ${server}`);
         const result = await this.fetchFromServer(server, sha256, path);
         if (result) {
           // Cache successful result
-          const config = this.config.getConfig();
-          fileContentCache.set(cacheKey, result.content, config.fileContentCacheTtlMs);
+          logger.info(
+            `💾 Caching file content for ${sha256.substring(0, 8)}... (${
+              result.content.length
+            } bytes)`
+          );
+          logger.debug(
+            `Caching details: content type: ${result.content.constructor.name}, length: ${result.content.length}`
+          );
+
+          try {
+            await CacheService.setFileContent(sha256, result.content);
+            logger.info(`✅ File successfully cached for ${sha256.substring(0, 8)}...`);
+
+            // Verify the cache was set correctly
+            const verification = await CacheService.getFileContent(sha256);
+            if (verification) {
+              logger.debug(`🔍 Cache verification successful: ${verification.length} bytes stored`);
+            } else {
+              logger.warn(`⚠️  Cache verification FAILED for ${sha256.substring(0, 8)}...`);
+            }
+          } catch (cacheError) {
+            logger.error(
+              `❌ Failed to cache file content for ${sha256.substring(0, 8)}...:`,
+              cacheError
+            );
+          }
+
           logger.logBlossom('fetchFile', sha256, server, true, {
             size: result.contentLength,
             contentType: result.contentType,
+            cached: true,
           });
           return result;
         }
@@ -65,7 +101,7 @@ export class BlossomHelper {
       }
     }
 
-    logger.error(`Failed to fetch file ${sha256.substring(0, 8)}... from all servers`, {
+    logger.error(`❌ Failed to fetch file ${sha256.substring(0, 8)}... from all servers`, {
       servers,
       serverCount: servers.length,
     });

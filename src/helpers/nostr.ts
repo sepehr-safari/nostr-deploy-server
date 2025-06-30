@@ -3,11 +3,12 @@ import 'websocket-polyfill';
 import {
   BlossomServerListEvent,
   NostrEvent,
+  ParsedEvent,
   PubkeyResolution,
   RelayListEvent,
   StaticFileEvent,
 } from '../types';
-import { blossomServerCache, pathMappingCache, relayListCache } from '../utils/cache';
+import { CacheService } from '../utils/cache';
 import { ConfigManager } from '../utils/config';
 import { logger } from '../utils/logger';
 
@@ -119,12 +120,25 @@ export class NostrHelper {
 
   /**
    * Get active connections for the specified relays, establishing new ones if needed
+   * Prioritizes relays by reliability for faster responses
    */
   private async getActiveRelays(relays: string[]): Promise<string[]> {
+    // Prioritize relays by reliability/speed (Primal, Damus, and Nostr.band are typically faster)
+    const priorityRelays = [
+      'wss://relay.primal.net',
+      'wss://relay.damus.io',
+      'wss://relay.nostr.band',
+    ];
+
+    const sortedRelays = [
+      ...relays.filter((relay) => priorityRelays.includes(relay)),
+      ...relays.filter((relay) => !priorityRelays.includes(relay)),
+    ];
+
     const activeRelays: string[] = [];
 
     // Establish connections to all relays in parallel
-    const connectionPromises = relays.map(async (relay) => {
+    const connectionPromises = sortedRelays.map(async (relay) => {
       try {
         await this.ensureConnection(relay);
         const connection = this.connections.get(relay);
@@ -179,11 +193,18 @@ export class NostrHelper {
    * Get relay list for a pubkey (NIP-65)
    */
   public async getRelayList(pubkey: string): Promise<string[]> {
-    const cacheKey = `relays:${pubkey}`;
-    const cached = relayListCache.get(cacheKey);
+    // Check cache first
+    const cached = await CacheService.getRelaysForPubkey(pubkey);
     if (cached) {
+      logger.debug(
+        `🎯 Relay list cache HIT for pubkey: ${pubkey.substring(0, 8)}... (${cached.length} relays)`
+      );
       return cached;
     }
+
+    logger.debug(
+      `💔 Relay list cache MISS for pubkey: ${pubkey.substring(0, 8)}... - querying Nostr`
+    );
 
     const config = this.config.getConfig();
     const relays = config.defaultRelays;
@@ -197,14 +218,13 @@ export class NostrHelper {
         limit: 1,
       };
 
-      const events = await this.queryRelays(relays, filter, 5000);
+      const events = await this.queryRelays(relays, filter, 2000);
 
       if (events.length === 0) {
         logger.debug(
           `No relay list found for pubkey: ${pubkey.substring(0, 8)}..., using defaults`
         );
-        const config = this.config.getConfig();
-        relayListCache.set(cacheKey, relays, config.positiveCacheTtlMs);
+        await CacheService.setRelaysForPubkey(pubkey, relays);
         return relays;
       }
 
@@ -225,8 +245,7 @@ export class NostrHelper {
       }
 
       const finalRelays = userRelays.length > 0 ? userRelays : relays;
-      const config = this.config.getConfig();
-      relayListCache.set(cacheKey, finalRelays, config.positiveCacheTtlMs);
+      await CacheService.setRelaysForPubkey(pubkey, finalRelays);
 
       logger.logNostr('getRelayList', pubkey, true, { relayCount: finalRelays.length });
       return finalRelays;
@@ -235,8 +254,7 @@ export class NostrHelper {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
       // Return default relays on error
-      const config = this.config.getConfig();
-      relayListCache.set(cacheKey, relays, config.errorCacheTtlMs);
+      await CacheService.setRelaysForPubkey(pubkey, relays);
       return relays;
     }
   }
@@ -245,11 +263,20 @@ export class NostrHelper {
    * Get Blossom server list for a pubkey (BUD-03)
    */
   public async getBlossomServers(pubkey: string): Promise<string[]> {
-    const cacheKey = `blossom:${pubkey}`;
-    const cached = blossomServerCache.get(cacheKey);
+    // Check cache first
+    const cached = await CacheService.getBlossomServersForPubkey(pubkey);
     if (cached) {
+      logger.debug(
+        `🎯 Blossom servers cache HIT for pubkey: ${pubkey.substring(0, 8)}... (${
+          cached.length
+        } servers)`
+      );
       return cached;
     }
+
+    logger.debug(
+      `💔 Blossom servers cache MISS for pubkey: ${pubkey.substring(0, 8)}... - querying Nostr`
+    );
 
     const userRelays = await this.getRelayList(pubkey);
 
@@ -270,7 +297,7 @@ export class NostrHelper {
         );
         const config = this.config.getConfig();
         const defaultServers = config.defaultBlossomServers;
-        blossomServerCache.set(cacheKey, defaultServers, config.positiveCacheTtlMs);
+        await CacheService.setBlossomServersForPubkey(pubkey, defaultServers);
         return defaultServers;
       }
 
@@ -286,7 +313,7 @@ export class NostrHelper {
 
       const config = this.config.getConfig();
       const finalServers = servers.length > 0 ? servers : config.defaultBlossomServers;
-      blossomServerCache.set(cacheKey, finalServers, config.positiveCacheTtlMs);
+      await CacheService.setBlossomServersForPubkey(pubkey, finalServers);
 
       logger.logNostr('getBlossomServers', pubkey, true, { serverCount: finalServers.length });
       return finalServers;
@@ -297,7 +324,7 @@ export class NostrHelper {
       // Return default servers on error
       const config = this.config.getConfig();
       const defaultServers = config.defaultBlossomServers;
-      blossomServerCache.set(cacheKey, defaultServers, config.errorCacheTtlMs);
+      await CacheService.setBlossomServersForPubkey(pubkey, defaultServers);
       return defaultServers;
     }
   }
@@ -306,11 +333,35 @@ export class NostrHelper {
    * Get static file mapping for a specific path (kind 34128)
    */
   public async getStaticFileMapping(pubkey: string, path: string): Promise<string | null> {
-    const cacheKey = `mapping:${pubkey}:${path}`;
-    const cached = pathMappingCache.get(cacheKey);
+    // Check cache first
+    const cached = await CacheService.getBlobForPath(pubkey, path);
     if (cached) {
-      return cached;
+      logger.debug(
+        `🎯 File mapping cache HIT for ${path} from pubkey: ${pubkey.substring(
+          0,
+          8
+        )}... → ${cached.sha256.substring(0, 8)}...`
+      );
+      return cached.sha256;
     }
+
+    // Check negative cache
+    if (await CacheService.isNegativeCached(`mapping:${pubkey}:${path}`)) {
+      logger.debug(
+        `🚫 Negative cache HIT for ${path} from pubkey: ${pubkey.substring(
+          0,
+          8
+        )}... - returning null`
+      );
+      return null;
+    }
+
+    logger.debug(
+      `💔 File mapping cache MISS for ${path} from pubkey: ${pubkey.substring(
+        0,
+        8
+      )}... - querying Nostr`
+    );
 
     const userRelays = await this.getRelayList(pubkey);
     const config = this.config.getConfig();
@@ -325,16 +376,23 @@ export class NostrHelper {
         limit: 1,
       };
 
-      // Try with user relays first
-      let events = await this.queryRelays(userRelays, filter, config.relayQueryTimeoutMs);
+      // Prepare relay sets for concurrent querying
+      const defaultRelays = config.defaultRelays.filter((relay) => !userRelays.includes(relay));
+      const allRelaysCombined = [...userRelays, ...defaultRelays];
 
-      // If no events found and we have user relays, also try default relays as fallback
-      if (events.length === 0 && userRelays.length > 0) {
-        const defaultRelays = config.defaultRelays.filter((relay) => !userRelays.includes(relay));
-        if (defaultRelays.length > 0) {
-          logger.debug(`No mapping found on user relays, trying default relays for ${path}`);
-          events = await this.queryRelays(defaultRelays, filter, config.relayQueryTimeoutMs);
-        }
+      // Try user relays first with shorter timeout, then concurrent fallback
+      let events = await this.queryRelays(
+        userRelays,
+        filter,
+        Math.min(config.relayQueryTimeoutMs, 2000)
+      );
+
+      // If no events found, try both user relays + default relays concurrently with remaining time
+      if (events.length === 0 && allRelaysCombined.length > userRelays.length) {
+        logger.debug(`No mapping found on user relays, trying all relays concurrently for ${path}`);
+
+        // Use all relays with a slightly longer timeout for the comprehensive search
+        events = await this.queryRelays(allRelaysCombined, filter, config.relayQueryTimeoutMs);
       }
 
       if (events.length === 0) {
@@ -345,7 +403,7 @@ export class NostrHelper {
         }
 
         logger.debug(`No file mapping found for ${path} from pubkey: ${pubkey.substring(0, 8)}...`);
-        pathMappingCache.set(cacheKey, '', config.negativeCacheTtlMs);
+        await CacheService.setNegativeCache(`mapping:${pubkey}:${path}`);
         return null;
       }
 
@@ -362,11 +420,19 @@ export class NostrHelper {
 
       if (!sha256) {
         logger.error(`Static file event missing SHA256 hash for path: ${path}`);
-        pathMappingCache.set(cacheKey, '', config.negativeCacheTtlMs);
+        await CacheService.setNegativeCache(`mapping:${pubkey}:${path}`);
         return null;
       }
 
-      pathMappingCache.set(cacheKey, sha256, config.positiveCacheTtlMs);
+      // Create ParsedEvent for cache
+      const parsedEvent: ParsedEvent = {
+        pubkey: event.pubkey,
+        path: path,
+        sha256: sha256,
+        created_at: event.created_at,
+      };
+
+      await CacheService.setBlobForPath(pubkey, path, parsedEvent);
       logger.logNostr('getStaticFileMapping', pubkey, true, {
         path,
         sha256: sha256.substring(0, 8) + '...',
@@ -377,13 +443,14 @@ export class NostrHelper {
         path,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      pathMappingCache.set(cacheKey, '', config.negativeCacheTtlMs);
+      await CacheService.setNegativeCache(`mapping:${pubkey}:${path}`);
       return null;
     }
   }
 
   /**
    * Query multiple relays with timeout using persistent connections
+   * Optimized for fast responses - terminates early when events are found
    */
   private async queryRelays(
     relays: string[],
@@ -406,10 +473,11 @@ export class NostrHelper {
     return new Promise((resolve, reject) => {
       const events: NostrEvent[] = [];
       const timeout = setTimeout(() => {
-        resolve(events); // Return what we have so far instead of rejecting
+        resolve(events); // Return what we have so far
       }, timeoutMs);
 
       let completedRelays = 0;
+      let hasFoundEvents = false;
       const totalRelays = activeRelays.length;
 
       if (totalRelays === 0) {
@@ -422,10 +490,24 @@ export class NostrHelper {
         const sub = this.pool.subscribeMany(activeRelays, [filter], {
           onevent(event) {
             events.push(event);
+
+            // For file mapping queries (kind 34128), we typically only need one result
+            // Terminate early to improve response time
+            if (filter.kinds && filter.kinds.includes(34128) && events.length >= 1) {
+              if (!hasFoundEvents) {
+                hasFoundEvents = true;
+                // Give a small grace period for potentially better/newer results
+                setTimeout(() => {
+                  clearTimeout(timeout);
+                  sub.close();
+                  resolve(events);
+                }, 200); // 200ms grace period
+              }
+            }
           },
           oneose() {
             completedRelays++;
-            if (completedRelays === totalRelays) {
+            if (completedRelays === totalRelays || hasFoundEvents) {
               clearTimeout(timeout);
               sub.close();
               resolve(events);
