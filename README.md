@@ -7,7 +7,7 @@ A Node.js server implementation for serving static websites under npub subdomain
 - **Decentralized Hosting**: Serves websites using Nostr events (kind 34128) for path mappings and Blossom servers for file storage
 - **Npub Subdomains**: Supports `npub1xxx.example.com` wildcard subdomain routing
 - **Zero Storage**: Acts as a pure proxy/gateway without storing any files locally
-- **Intelligent Caching**: In-memory caching with TTL for improved performance
+- **Advanced Multi-Layer Caching**: Sophisticated caching system with multiple backends (In-Memory, Redis, SQLite), intelligent cache invalidation, TTL management, and comprehensive monitoring tools for optimal performance
 - **Automatic Fallbacks**: Falls back to `/404.html` for missing files and default servers when user configurations are unavailable
 
 - **Rate Limiting**: Configurable rate limiting to prevent abuse
@@ -508,22 +508,52 @@ WILDCARD_KEY_PATH=/etc/letsencrypt/live/example.com/privkey.pem
 
 ## 🌐 How It Works
 
-### 1. Request Flow
+### 1. Request Flow with Advanced Caching
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Server
+    participant Cache as Cache Layer
     participant Nostr as Nostr Relays
     participant Blossom as Blossom Servers
 
     Client->>Server: GET npub123.example.com/index.html
     Server->>Server: Resolve npub to pubkey
-    Server->>Nostr: Fetch relay list (kind 10002)
-    Server->>Nostr: Fetch file mapping (kind 34128)
-    Server->>Nostr: Fetch Blossom servers (kind 10063)
-    Server->>Blossom: Fetch file by SHA256
-    Server->>Client: Serve file with headers
+
+    Server->>Cache: Check domain resolution cache
+    alt Cache Hit
+        Cache-->>Server: Return cached pubkey mapping
+    else Cache Miss
+        Server->>Nostr: Fetch relay list (kind 10002)
+        Server->>Cache: Store relay list
+    end
+
+    Server->>Cache: Check path mapping cache
+    alt Cache Hit
+        Cache-->>Server: Return cached file mapping
+    else Cache Miss
+        Server->>Nostr: Fetch file mapping (kind 34128)
+        Server->>Cache: Store path mapping
+    end
+
+    Server->>Cache: Check Blossom servers cache
+    alt Cache Hit
+        Cache-->>Server: Return cached server list
+    else Cache Miss
+        Server->>Nostr: Fetch Blossom servers (kind 10063)
+        Server->>Cache: Store Blossom servers
+    end
+
+    Server->>Cache: Check file content cache
+    alt Cache Hit
+        Cache-->>Server: Return cached file content
+        Server->>Client: Serve cached file
+    else Cache Miss
+        Server->>Blossom: Fetch file by SHA256
+        Server->>Cache: Store file content
+        Server->>Client: Serve file with headers
+    end
 ```
 
 ### 2. Path Resolution
@@ -533,13 +563,65 @@ sequenceDiagram
 - `/about` → `/about/index.html` (if no extension)
 - Missing files → `/404.html` fallback
 
-### 3. Caching Strategy
+### 3. Advanced Multi-Layer Caching Strategy
 
-- **Path Mappings**: 5 minutes TTL
-- **Relay Lists**: 5 minutes TTL
-- **Blossom Server Lists**: 5 minutes TTL
-- **File Content**: 30 minutes TTL
-- **Error Results**: 1 minute TTL
+The server implements a sophisticated caching system with multiple specialized layers:
+
+#### Cache Layers & TTL Configuration
+
+- **Domain Resolution Cache**: Maps npub subdomains to pubkeys (TTL: 1 hour)
+- **Relay Lists Cache**: User's preferred Nostr relays (kind 10002) (TTL: 5 minutes)
+- **Path Mapping Cache**: File path to SHA256 mappings (kind 34128) (TTL: 5 minutes)
+- **Blossom Servers Cache**: User's preferred Blossom servers (kind 10063) (TTL: 5 minutes)
+- **Blob URLs Cache**: Available URLs for each blob across servers (TTL: 10 minutes)
+- **File Content Cache**: Actual file content with compression (TTL: 30 minutes)
+- **Negative Cache**: "Not found" results to avoid repeated lookups (TTL: 1 minute)
+
+#### Cache Backends Support
+
+1. **In-Memory Cache** (Development)
+
+   - Fastest performance (~1-2ms response time)
+   - No persistence, data lost on restart
+   - Suitable for single-instance development
+
+2. **Redis Cache** (Production Recommended)
+
+   - High performance (~2-5ms response time)
+   - Persistent storage with configurable eviction policies
+   - Horizontal scaling support with clustering
+   - Advanced features: pub/sub, transactions, Lua scripting
+
+3. **SQLite Cache** (Small/Medium Production)
+   - Good performance (~5-10ms response time)
+   - File-based persistence with ACID transactions
+   - Zero-configuration setup
+   - Perfect for single-instance deployments
+
+#### Intelligent Cache Invalidation
+
+- **Time-based Expiration**: Configurable TTL per cache layer
+- **Event-driven Invalidation**: Automatic cache clearing on Nostr event updates
+- **Dependency Tracking**: Cascading invalidation for related cache entries
+- **Manual Cache Control**: Administrative endpoints for cache management
+- **Smart Prefetching**: Predictive caching based on access patterns
+
+#### Cache Performance Features
+
+- **LRU Eviction**: Automatic removal of least recently used entries
+- **Memory Management**: Configurable memory limits with overflow protection
+- **Compression**: Gzip compression for file content cache
+- **Batch Operations**: Efficient bulk cache operations
+- **Connection Pooling**: Optimized Redis/SQLite connection management
+- **Circuit Breakers**: Automatic fallback when cache backend is unavailable
+
+#### Monitoring & Debugging
+
+- **Cache Hit/Miss Metrics**: Real-time performance statistics
+- **Memory Usage Tracking**: Detailed memory consumption monitoring
+- **Debug Logging**: Comprehensive cache operation logging
+- **Health Checks**: Cache backend health monitoring endpoints
+- **Performance Profiling**: Request-level cache performance analysis
 
 ## 🔌 API Endpoints
 
