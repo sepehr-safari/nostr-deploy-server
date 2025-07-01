@@ -2,8 +2,10 @@ import cors from 'cors';
 import express, { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { BlossomHelper } from './helpers/blossom';
+import { CacheInvalidationService } from './helpers/cache-invalidation';
 import { NostrHelper } from './helpers/nostr';
 import { SimpleSSRHelper } from './helpers/ssr-simple';
+import { CacheService } from './utils/cache';
 import { ConfigManager } from './utils/config';
 import { logger } from './utils/logger';
 
@@ -13,6 +15,7 @@ const config = configManager.getConfig();
 const nostrHelper = new NostrHelper();
 const blossomHelper = new BlossomHelper();
 const ssrHelper = new SimpleSSRHelper();
+const cacheInvalidationService = new CacheInvalidationService();
 
 // Create Express app
 const app = express();
@@ -723,6 +726,10 @@ app.get('*', async (req: Request, res: Response) => {
 
     const { pubkey } = pubkeyResolution;
 
+    // Handle domain access for sliding expiration
+    // This refreshes TTL for all related cache entries when the domain is accessed
+    await CacheService.handleDomainAccess(hostname, pubkey);
+
     // Normalize path - add index.html if path ends with /
     let normalizedPath = requestPath;
     if (normalizedPath.endsWith('/')) {
@@ -778,6 +785,50 @@ app.get('*', async (req: Request, res: Response) => {
       return;
     }
 
+    // Ensure fileResponse.content is a valid Uint8Array
+    let fileContent: Uint8Array;
+    if (!(fileResponse.content instanceof Uint8Array)) {
+      logger.error(
+        `Invalid file content type for ${sha256.substring(
+          0,
+          8
+        )}...: expected Uint8Array, got ${typeof fileResponse.content}`
+      );
+
+      // Try to convert if it's an object with numeric indices
+      if (typeof fileResponse.content === 'object' && fileResponse.content !== null) {
+        try {
+          const values = Object.values(fileResponse.content as any);
+          if (values.every((v) => typeof v === 'number' && v >= 0 && v <= 255)) {
+            fileContent = new Uint8Array(values as number[]);
+            logger.warn(
+              `Successfully converted malformed file content for ${sha256.substring(0, 8)}...`
+            );
+          } else {
+            throw new Error('Invalid numeric values in content object');
+          }
+        } catch (conversionError) {
+          logger.error(
+            `Failed to convert file content for ${sha256.substring(0, 8)}...:`,
+            conversionError
+          );
+          res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Invalid file content format',
+          });
+          return;
+        }
+      } else {
+        res.status(500).json({
+          error: 'Internal Server Error',
+          message: 'Invalid file content format',
+        });
+        return;
+      }
+    } else {
+      fileContent = fileResponse.content;
+    }
+
     // Check if this file should be SSR rendered
     const shouldSSR = ssrHelper.shouldRenderSSR(
       fileResponse.contentType,
@@ -797,7 +848,7 @@ app.get('*', async (req: Request, res: Response) => {
         // Use SSR to render the page
         const ssrResult = await ssrHelper.renderPage(
           fullUrl,
-          Buffer.from(fileResponse.content),
+          Buffer.from(fileContent),
           fileResponse.contentType
         );
 
@@ -812,13 +863,13 @@ app.get('*', async (req: Request, res: Response) => {
           ssrError
         );
         // Fallback to original content
-        finalContent = Buffer.from(fileResponse.content);
+        finalContent = Buffer.from(fileContent);
         finalContentType = fileResponse.contentType;
         finalContentLength = fileResponse.contentLength;
       }
     } else {
       // Use original content for non-HTML files
-      finalContent = Buffer.from(fileResponse.content);
+      finalContent = Buffer.from(fileContent);
       finalContentType = fileResponse.contentType;
       finalContentLength = fileResponse.contentLength;
 
@@ -908,37 +959,123 @@ const server = app.listen(config.port, () => {
   logger.info(`Default Blossom servers: ${config.defaultBlossomServers.length}`);
 });
 
-// Handle graceful shutdown
-const gracefulShutdown = () => {
-  logger.info('Shutting down gracefully...');
+// Keep track of active connections for graceful shutdown
+const activeConnections = new Set<any>();
 
-  server.close(() => {
-    logger.info('HTTP server closed');
-
-    // Close Nostr connections
-    nostrHelper.closeAllConnections();
-
-    // Close SSR browser
-    ssrHelper.close().catch((error) => {
-      logger.error('Error closing SSR helper:', error);
-    });
-
-    // Clean up caches
-    const {
-      pathMappingCache,
-      relayListCache,
-      blossomServerCache,
-      fileContentCache,
-    } = require('./utils/cache');
-    pathMappingCache.destroy();
-    relayListCache.destroy();
-    blossomServerCache.destroy();
-    fileContentCache.destroy();
-
-    logger.info('Cleanup completed');
-    process.exit(0);
+server.on('connection', (socket) => {
+  activeConnections.add(socket);
+  socket.on('close', () => {
+    activeConnections.delete(socket);
   });
+});
+
+// Set server timeouts to help with graceful shutdown
+server.keepAliveTimeout = 5000; // 5 seconds
+server.headersTimeout = 6000; // 6 seconds
+
+// Handle graceful shutdown
+let shutdownInProgress = false;
+
+const gracefulShutdown = () => {
+  if (shutdownInProgress) {
+    logger.warn('Shutdown already in progress, ignoring signal');
+    return;
+  }
+
+  shutdownInProgress = true;
+  logger.info('Shutting down gracefully...');
+  logger.info(`Active connections: ${activeConnections.size}`);
+
+  // Set a timeout to force exit if graceful shutdown takes too long
+  const forceExitTimeout = setTimeout(() => {
+    logger.error('Graceful shutdown timed out, forcing exit');
+    process.exit(1);
+  }, 15000); // 15 seconds timeout
+
+  // First, stop accepting new connections
+  server.close(async () => {
+    try {
+      logger.info('HTTP server closed (no longer accepting new connections)');
+
+      // Close Nostr connections
+      nostrHelper.closeAllConnections();
+
+      // Close SSR browser
+      await ssrHelper.close().catch((error) => {
+        logger.error('Error closing SSR helper:', error);
+      });
+
+      // Shutdown cache invalidation service
+      await cacheInvalidationService.shutdown().catch((error) => {
+        logger.error('Error shutting down cache invalidation service:', error);
+      });
+
+      // Clean up caches
+      logger.info('Shutting down cache manager...');
+      // Note: CacheService automatically manages its own cleanup
+      // No manual cleanup needed for advanced cache backends
+
+      logger.info('Cleanup completed');
+
+      // Clear the timeout since we're exiting gracefully
+      clearTimeout(forceExitTimeout);
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error during graceful shutdown:', error);
+      clearTimeout(forceExitTimeout);
+      process.exit(1);
+    }
+  });
+
+  // Give existing connections some time to finish, then force close them
+  setTimeout(() => {
+    if (activeConnections.size > 0) {
+      logger.warn(`Forcefully closing ${activeConnections.size} remaining connections`);
+      activeConnections.forEach((socket) => {
+        socket.destroy();
+      });
+      activeConnections.clear();
+    }
+  }, 3000); // 3 seconds grace period for existing connections
+
+  // If server.close() doesn't call its callback within 8 seconds, force the cleanup
+  setTimeout(() => {
+    if (shutdownInProgress) {
+      logger.warn('Server close callback not called within timeout, forcing cleanup');
+      // Force close any remaining connections
+      activeConnections.forEach((socket) => {
+        socket.destroy();
+      });
+      activeConnections.clear();
+      clearTimeout(forceExitTimeout);
+      process.exit(0);
+    }
+  }, 8000);
 };
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Promise Rejection:', { reason, promise: promise.toString() });
+
+  // In development, you might want to crash the process
+  // In production, you typically want to log and continue
+  if (process.env.NODE_ENV === 'development') {
+    logger.error('Crashing process due to unhandled rejection in development mode');
+    process.exit(1);
+  } else {
+    logger.error('Continuing after unhandled rejection in production mode');
+    // You might want to notify monitoring services here
+  }
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+
+  // For uncaught exceptions, it's usually safer to crash and restart
+  logger.error('Process will exit due to uncaught exception');
+  process.exit(1);
+});
 
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
