@@ -1,6 +1,6 @@
 {
   "name": "nostr-deploy-server",
-  "version": "1.9.3",
+  "version": "2.0.0",
   "description": "Node.js server for hosting static websites under npub subdomains using Nostr protocol and Blossom servers",
   "main": "dist/index.js",
   "scripts": {
@@ -9,6 +9,11 @@
     "start": "node dist/server.js",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:cache": "jest --testPathPattern=cache",
+    "test:invalidation": "jest --testPathPattern=cache-invalidation",
+    "test:coverage": "jest --coverage",
+    "debug:cache-invalidation": "npm run build && node debug-cache-invalidation.js",
+    "debug:test-publish": "npm run build && node debug-cache-invalidation.js test-publish",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix"
   },
@@ -24,17 +29,21 @@
   "author": "Nostr Deploy Team",
   "license": "MIT",
   "dependencies": {
+    "@keyv/redis": "^4.3.2",
+    "@keyv/sqlite": "^4.0.1",
     "@types/puppeteer": "^5.4.7",
     "axios": "^1.6.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "helmet": "^7.1.0",
+    "keyv": "^5.3.2",
     "mime-types": "^2.1.35",
     "nostr-tools": "^2.1.0",
     "puppeteer": "^24.10.1",
     "websocket-polyfill": "^0.0.3",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "xbytes": "^1.9.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

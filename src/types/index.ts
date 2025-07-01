@@ -41,6 +41,19 @@ export interface ServerConfig {
   errorCacheTtlMs: number;
   // Query Timeout Configuration
   relayQueryTimeoutMs: number;
+  // Advanced Cache Configuration
+  cachePath?: string;
+  cacheTime: number;
+  maxFileSize: number;
+
+  // Real-time Cache Invalidation Configuration
+  realtimeCacheInvalidation: boolean;
+  invalidationRelays: string[];
+  invalidationTimeoutMs: number;
+  invalidationReconnectDelayMs: number;
+
+  // Sliding Expiration Configuration
+  slidingExpiration: boolean;
 }
 
 export interface StaticFileEvent extends NostrEvent {
@@ -95,4 +108,11 @@ export interface PubkeyResolution {
   npub?: string;
   subdomain: string;
   isValid: boolean;
+}
+
+export interface ParsedEvent {
+  pubkey: string;
+  path: string;
+  sha256: string;
+  created_at: number;
 }

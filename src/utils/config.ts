@@ -1,4 +1,6 @@
 import * as dotenv from 'dotenv';
+// @ts-ignore - xbytes doesn't have TypeScript declarations
+import xbytes from 'xbytes';
 import { ServerConfig } from '../types';
 
 // Load environment variables
@@ -45,7 +47,28 @@ export class ConfigManager {
       fileContentCacheTtlMs: parseInt(process.env.FILE_CONTENT_CACHE_TTL_MS || '1800000', 10), // 30 minutes default
       errorCacheTtlMs: parseInt(process.env.ERROR_CACHE_TTL_MS || '60000', 10), // 1 minute default
       // Query Timeout Configuration
-      relayQueryTimeoutMs: parseInt(process.env.RELAY_QUERY_TIMEOUT_MS || '10000', 10), // 10 seconds default
+      relayQueryTimeoutMs: parseInt(process.env.RELAY_QUERY_TIMEOUT_MS || '3000', 10), // Reduced from 10s to 3s for faster responses
+      // Advanced Cache Configuration
+      cachePath: process.env.CACHE_PATH,
+      cacheTime: parseInt(process.env.CACHE_TIME || '3600', 10),
+      maxFileSize: process.env.MAX_FILE_SIZE
+        ? xbytes.parseSize(process.env.MAX_FILE_SIZE)
+        : Infinity,
+
+      // Real-time Cache Invalidation Configuration
+      realtimeCacheInvalidation: process.env.REALTIME_CACHE_INVALIDATION === 'true',
+      invalidationRelays: this.parseCommaSeparated(
+        process.env.INVALIDATION_RELAYS ||
+          'wss://relay.primal.net,wss://relay.damus.io,wss://relay.nostr.band' // Use fast, reliable relays
+      ),
+      invalidationTimeoutMs: parseInt(process.env.INVALIDATION_TIMEOUT_MS || '30000', 10), // 30 seconds
+      invalidationReconnectDelayMs: parseInt(
+        process.env.INVALIDATION_RECONNECT_DELAY_MS || '5000',
+        10
+      ), // 5 seconds
+
+      // Sliding Expiration Configuration
+      slidingExpiration: process.env.SLIDING_EXPIRATION === 'true', // Default is false for backward compatibility
     };
 
     this.validateConfig();
@@ -183,6 +206,32 @@ export class ConfigManager {
     // Query Timeout Configuration
     if (config.relayQueryTimeoutMs < 1000) {
       throw new Error('Relay query timeout must be at least 1000ms');
+    }
+
+    // Real-time Cache Invalidation Configuration
+    if (config.realtimeCacheInvalidation) {
+      if (config.invalidationRelays.length === 0) {
+        throw new Error(
+          'At least one invalidation relay is required when real-time cache invalidation is enabled'
+        );
+      }
+
+      // Validate invalidation relay URLs
+      config.invalidationRelays.forEach((relay) => {
+        if (!relay.startsWith('wss://') && !relay.startsWith('ws://')) {
+          throw new Error(
+            `Invalid invalidation relay URL: ${relay}. Must start with ws:// or wss://`
+          );
+        }
+      });
+
+      if (config.invalidationTimeoutMs < 5000) {
+        throw new Error('Invalidation timeout must be at least 5000ms');
+      }
+
+      if (config.invalidationReconnectDelayMs < 1000) {
+        throw new Error('Invalidation reconnect delay must be at least 1000ms');
+      }
     }
   }
 

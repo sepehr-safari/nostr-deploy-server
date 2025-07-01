@@ -3,9 +3,9 @@ import axios from 'axios';
 // Mock all dependencies at the module level
 jest.mock('axios');
 jest.mock('../../utils/cache', () => ({
-  fileContentCache: {
-    get: jest.fn(),
-    set: jest.fn(),
+  CacheService: {
+    getFileContent: jest.fn(),
+    setFileContent: jest.fn(),
   },
 }));
 jest.mock('../../utils/config', () => ({
@@ -29,11 +29,12 @@ jest.mock('../../utils/logger', () => ({
 }));
 
 import { BlossomHelper } from '../../helpers/blossom';
-import { fileContentCache } from '../../utils/cache';
+import { CacheService } from '../../utils/cache';
 import { logger } from '../../utils/logger';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 const mockedLogger = logger as jest.Mocked<typeof logger>;
+const mockedCacheService = CacheService as jest.Mocked<typeof CacheService>;
 
 describe('BlossomHelper', () => {
   let blossomHelper: BlossomHelper;
@@ -59,7 +60,17 @@ describe('BlossomHelper', () => {
 
   describe('MIME type correction', () => {
     beforeEach(() => {
-      (fileContentCache.get as jest.Mock).mockReturnValue(null);
+      // Mock cache to simulate proper cache behavior
+      const cacheStore = new Map<string, Uint8Array>();
+
+      mockedCacheService.getFileContent.mockImplementation(async (sha256) => {
+        return cacheStore.get(sha256) || null;
+      });
+
+      mockedCacheService.setFileContent.mockImplementation(async (sha256, content) => {
+        cacheStore.set(sha256, content);
+        return Promise.resolve();
+      });
     });
 
     it('should correct CSS file with wrong application/json MIME type', async () => {
@@ -305,7 +316,7 @@ describe('BlossomHelper', () => {
       mockedAxios.get.mockRejectedValueOnce(new Error('Network error'));
 
       const result = await blossomHelper.fetchFile(
-        'test-sha256',
+        'network-error-test-sha256', // Use unique SHA256 to avoid cache hit
         ['https://test-server.com'],
         'test.css'
       );
@@ -313,7 +324,7 @@ describe('BlossomHelper', () => {
       expect(result).toBeNull();
       expect(mockedLogger.logBlossom).toHaveBeenCalledWith(
         'fetchFile',
-        'test-sha256',
+        'network-error-test-sha256',
         'https://test-server.com',
         false,
         expect.objectContaining({ error: 'Network error' })

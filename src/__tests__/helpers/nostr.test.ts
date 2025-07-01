@@ -1,6 +1,20 @@
 import { nip19 } from 'nostr-tools';
 import { NostrHelper } from '../../helpers/nostr';
-import { blossomServerCache, pathMappingCache, relayListCache } from '../../utils/cache';
+import { CacheService } from '../../utils/cache';
+
+// Mock CacheService
+jest.mock('../../utils/cache', () => ({
+  CacheService: {
+    getRelaysForPubkey: jest.fn(),
+    setRelaysForPubkey: jest.fn(),
+    getBlossomServersForPubkey: jest.fn(),
+    setBlossomServersForPubkey: jest.fn(),
+    getBlobForPath: jest.fn(),
+    setBlobForPath: jest.fn(),
+    setNegativeCache: jest.fn(),
+    isNegativeCached: jest.fn(),
+  },
+}));
 
 // Mock the nostr-tools module
 jest.mock('nostr-tools', () => ({
@@ -18,15 +32,19 @@ jest.mock('nostr-tools', () => ({
 describe('NostrHelper', () => {
   let nostrHelper: NostrHelper;
   const mockDecode = nip19.decode as jest.MockedFunction<typeof nip19.decode>;
+  const mockedCacheService = CacheService as jest.Mocked<typeof CacheService>;
 
   beforeEach(() => {
-    // Clear all caches before each test
-    relayListCache.clear();
-    blossomServerCache.clear();
-    pathMappingCache.clear();
+    // Clear all mocks before each test
+    jest.clearAllMocks();
+
+    // Reset cache service mocks
+    mockedCacheService.getRelaysForPubkey.mockResolvedValue(null);
+    mockedCacheService.getBlossomServersForPubkey.mockResolvedValue(null);
+    mockedCacheService.getBlobForPath.mockResolvedValue(null);
+    mockedCacheService.isNegativeCached.mockResolvedValue(false);
 
     nostrHelper = new NostrHelper();
-    jest.clearAllMocks();
   });
 
   afterEach(() => {

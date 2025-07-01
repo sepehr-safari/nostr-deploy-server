@@ -105,6 +105,16 @@ describe('SimpleSSRHelper', () => {
         errorCacheTtlMs: 60000,
         // Query Timeout Configuration
         relayQueryTimeoutMs: 10000,
+        // Advanced Cache Configuration
+        cacheTime: 3600,
+        maxFileSize: 52428800, // 50MB in bytes
+        // Real-time Cache Invalidation Configuration
+        realtimeCacheInvalidation: false,
+        invalidationRelays: [],
+        invalidationTimeoutMs: 30000,
+        invalidationReconnectDelayMs: 5000,
+        // Sliding Expiration Configuration
+        slidingExpiration: false,
       };
 
       mockConfigManager.getConfig.mockReturnValue(disabledConfig);
