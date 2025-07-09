@@ -1,6 +1,6 @@
 {
   "name": "nostr-deploy-server",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Node.js server for hosting static websites under npub subdomains using Nostr protocol and Blossom servers",
   "main": "dist/index.js",
   "scripts": {
